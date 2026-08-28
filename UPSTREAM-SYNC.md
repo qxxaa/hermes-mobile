@@ -41,6 +41,9 @@ Symfony/Laravel ecosystem does it with `git subtree split` / **splitsh-lite**
 
 Split SHAs are deterministic: the same upstream input always produces the same
 split commit, so the split history is stable and merges are incremental.
+Caveat (measured 2026-08-27): determinism holds ONLY for a pinned
+git-filter-repo version — an unpinned `uvx` can drift and re-hash the whole
+lineage (benign content-wise; detection in "Import verification" below).
 
 ### One-time setup
 
@@ -67,6 +70,7 @@ git clone --no-checkout \
 #    toolchain settles.
 cd /opt/data/cache/upstream-split
 uvx git-filter-repo --path apps/desktop --path apps/shared --force
+rm -rf .git/filter-repo/already_ran   # pass 1 writes it; pass 2 would prompt (EOF) otherwise
 uvx git-filter-repo --force --invert-paths \
   --path=apps/desktop/electron --path=apps/desktop/e2e --path=apps/desktop/pr-assets \
   --path=apps/desktop/playwright.config.ts --path=apps/desktop/tsconfig.electron.json \
@@ -76,9 +80,10 @@ uvx git-filter-repo --force --invert-paths \
   --path=apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs
 
 # 3. Import the split into the fork as a tracking branch (--no-tags: upstream's
-#    release tags are stragglers here — see caveats). --force on the FIRST
-#    import after a filter change: the re-hashed lineage shares no commits
-#    with the old upstream-desktop (non-fast-forward).
+#    release tags are stragglers here — see caveats). --force: the import is
+#    non-fast-forward whenever the lineage re-hashed — after a filter change
+#    OR after git-filter-repo version drift (safe: the old head is an
+#    ancestor of main).
 cd /opt/data/hermes-mobile
 git fetch --no-tags --force /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
 
@@ -109,12 +114,19 @@ Caveats:
 - Replace refs are **local repo state** (`refs/replace/`), not pushed by
   default. The graft is bootstrap + filter-change machinery (step 4): after
   a sync lands, the split lineage is baked into `main` and plain clones
-  merge without it. Re-apply only when re-importing a re-hashed lineage.
-- The scratch clone is disposable — recreate it per sync. Deepen the
-  `--shallow-since` as the fork ages (e.g. 2 months back) so the split covers
-  everything since the last sync.
-- `git filter-repo` strips remotes after the rewrite — re-add `origin` in the
-  scratch clone each sync (see procedure).
+  merge without it, and the graft ref becomes inert. It is NOT needed after
+  a version-drift re-hash (the tree-identical lineage still shares the fork
+  root's history — verified 2026-08-27). Re-apply only after an intentional
+  filter change or a fork re-base.
+- The scratch clone is disposable — recreate it per sync (the sync procedure
+  does exactly that; an in-place refresh silently filters STALE history — see
+  the skill). Deepen the `--shallow-since` as the fork ages (e.g. 2 months
+  back) so the split covers everything since the last sync.
+- `git filter-repo` strips remotes after the rewrite. Harmless in the
+  rebuild-fresh flow: the scratch's `origin` exists at clone time, and nothing
+  after pass 1 needs it (the split is imported into the fork by PATH fetch).
+  (The old in-place-refresh procedure needed it re-added — that procedure is
+  gone.)
 - filter-repo NEEDS blob content (its fast-export→fast-import pipeline fails
   with `fatal: Blob not found` on a partial clone — first sync hit this).
   Use a PLAIN clone (step 1) so blobs arrive with the clone; do NOT rely on
@@ -156,24 +168,65 @@ rm -rf upstream-split
 git clone --no-checkout --no-tags \
   --shallow-since=2026-07-25 https://github.com/NousResearch/hermes-agent.git \
   upstream-split
+# --shallow-since window: extend as the fork ages (see caveats) so the split
+# still covers everything since the last sync.
 # Re-run BOTH filter passes (see one-time setup step 2). --force makes
 # filter-repo idempotent for identical args, which is what keeps the split
 # SHAs deterministic across syncs (module a git-filter-repo version pin!).
+# Between the passes, clear the already_ran marker: pass 1 writes it and
+# pass 2 would otherwise prompt non-interactively (input() EOF crash).
 uvx git-filter-repo --path apps/desktop --path apps/shared --force
+rm -rf .git/filter-repo/already_ran
 uvx git-filter-repo --force --invert-paths \
-  --path apps/desktop/electron --path apps/desktop/e2e --path apps/desktop/pr-assets \
-  --path apps/desktop/playwright.config.ts --path apps/desktop/tsconfig.electron.json \
-  --path apps/desktop/tsconfig.e2e.json --path apps/desktop/preview-demo.html \
-  --path apps/desktop/src/app/settings/keybind-settings.tsx \
-  --path apps/desktop/src/plugins/hello-runtime/plugin.runtime.js \
-  --path apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs
+  --path=apps/desktop/electron --path=apps/desktop/e2e --path=apps/desktop/pr-assets \
+  --path=apps/desktop/playwright.config.ts --path=apps/desktop/tsconfig.electron.json \
+  --path=apps/desktop/tsconfig.e2e.json --path=apps/desktop/preview-demo.html \
+  --path=apps/desktop/src/app/settings/keybind-settings.tsx \
+  --path=apps/desktop/src/plugins/hello-runtime/plugin.runtime.js \
+  --path=apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs
 cd /opt/data/hermes-mobile
 git fetch --no-tags --force /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
 
-# 2. Merge
+# 2. Verify the import BEFORE merging — lineage continuity + content parity
+#    (FAILING the first check is NORMAL after a filter-repo version drift;
+#    see "Import verification" below for the benign-vs-broken decision tree):
+#    REMEMBER the value of old-split-head (e.g. c1772812e before 2026-08-27).
+git merge-base --is-ancestor <old-split-head> upstream-desktop && echo CONTINUOUS
+
+# 3. Merge
 git checkout -b sync/upstream-<date> main
 git merge upstream-desktop
 ```
+
+## Import verification (post-import, pre-merge) — the "re-hash detection" step
+
+`git merge-base --is-ancestor <old-split-head> upstream-desktop` is the
+deterministic-continuation check. It FAILS whenever the split lineage was
+re-hashed — i.e. the same upstream commits produced different split SHAs.
+Two causes, one benign:
+
+1. **git-filter-repo version drift (benign — measured 2026-08-27).** uvx
+   unpinned resolves a newer tool; identical args + identical input no longer
+   hash identically. The whole lineage re-hashes and the merge base rolls
+   back to the last shared commit. Verify content equivalence by TREE MATCH —
+   the old split head's tree must exist verbatim somewhere on the new lineage:
+   ```bash
+   T_OLD=$(git rev-parse <old-split-head>^{tree})
+   git rev-list upstream-desktop | while read c; do
+     [ "$(git rev-parse "$c^{tree}")" = "$T_OLD" ] && { echo "$c"; break; }
+   done
+   # a match (e.g. f04955bf for c1772812e) = benign re-hash: same content,
+   # different SHAs. git's 3-way collapses the identical-content segment at
+   # merge time — EXPECT a massively inflated UU surface (214 on the third
+   # sync vs ~28 normal) because every fork-touched file upstream churned
+   # since the rolled-back base now conflicts. No re-graft needed: the fork
+   # root and the last shared commit are both in the common prefix, and the
+   # old graft ref stays consistent.
+   # NO match = content genuinely diverged → STOP. Suspect an upstream
+   # force-push/rebuild or a filter-args change (→ filter-change procedure).
+2. **A filter-args change** (intentional) → follow "The re-graft after a
+   filter change" in the skill; the re-hash is then EXPECTED and the graft
+   target must be recomputed.
 
 Resolve, in order:
 
@@ -185,7 +238,39 @@ Resolve, in order:
    Then assert stripped paths are empty — upstream re-creations arrive as
    **clean adds**, not conflicts (sync #1 leaked 45 files this way):
    `test -z "$(git ls-files apps/desktop/electron apps/desktop/e2e)"` — `git rm` any hits.
-2. **Real work**: the `UU` content conflicts — ~13 files, table below.
+2. **Classify, then resolve by fork ownership** (this is what makes a 200+
+   conflict surface tractable; the "~13 files" table below is the normal
+   surface WITHOUT a lineage re-hash — after one, every fork-touched file
+   upstream churned since the rolled-back base conflicts, and the pure
+   noise dwarfs the real work):
+   - First find the TREE-MATCH commit (from "Import verification") — the new
+     lineage's content-equivalent of the old split head. Call it `TM`.
+   - For each `UU`/`AA` file:
+     ```bash
+     if git diff --quiet TM HEAD -- "$f"; then
+       # Fork never modified it → pure upstream content, take theirs.
+       git checkout --theirs -- "$f" && git add -- "$f"
+     else
+       # Fork-modified → upstream's latest shape + re-apply the fork delta.
+       git checkout --theirs -- "$f" && git add -- "$f"
+       git diff TM HEAD -- "$f" | git apply --3way - && git add -- "$f"
+       # apply failures → resolve manually (markers are INVERTED, see below).
+     fi
+     ```
+   - `UD` (deleted by them + we modified): upstream moved/renamed/refactored —
+     check the new path first (`chat-messages.ts` → `chat-messages/` dir,
+     `gateway-event.ts` → dir on the third sync); if the fork's changes were
+     consolidated upstream (e.g. our clarify helpers), accept the deletion
+     and fix imports; otherwise port the change to the new shape.
+   - **`git apply --3way` conflict markers are INVERTED vs `git merge`
+     markers**: "ours" = the current worktree file (i.e. the THEIR content we
+     checked out), "theirs" = the patch postimage (the fork's own version).
+     Reading them with merge semantics backs you into reversed resolutions —
+     verify against the true sides (`git show HEAD:<path>`,
+     `git show upstream-desktop:<path>`) whenever the region matters.
+   - After ANY manual marker resolution, verify no markers remain and the
+     identifiers used by the merged regions actually resolve (the
+     hybrid-file failure mode — see skill).
 3. **Dependency drift check** (the split is the renderer; the *build graph* is
    not — root-level files the build depends on live outside the split paths
    and upstream changes them constantly; measured 2026-08-15: upstream root
@@ -310,7 +395,7 @@ comes first.
 
 Not yet created (2026-08-15). Spec:
 
-1. Refresh the split, then report:
+1. Rebuild the split scratch fresh (the sync procedure's step 1), then report:
    - `git log --oneline <last-sync-sha>..upstream-desktop | wc -l` + touch
      counts per file in the conflict surface (the table above)
    - contract diff: `git diff <last-sync-sha> upstream-desktop -- apps/desktop/src/global.d.ts apps/shared` → list new/removed bridge members (the porting checklist)
