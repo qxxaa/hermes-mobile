@@ -58,15 +58,22 @@ git clone --no-checkout \
 #    --invert-paths is a single boolean that inverts the WHOLE accumulated
 #    --path union (verified in source 2026-08-16) — it is not per-arg, so
 #    "keep A∪B minus C" requires: pass 1 = keep A∪B, pass 2 = drop C.
+#    NOTE (2026-08-27): the current git-filter-repo (uvx, unpinned) MISPARses
+#    the space form `--path X --path Y` when X/Y contain hyphens (argparse
+#    leaves the later values as unrecognized positionals). Use `--path=X`.
+#    The uvx version is unpinned — version drift re-hashes the whole split
+#    lineage (harmless content-wise — see "re-hash detection" below — but
+#    it inflates the merge's conflict surface). Pin the version once the
+#    toolchain settles.
 cd /opt/data/cache/upstream-split
 uvx git-filter-repo --path apps/desktop --path apps/shared --force
 uvx git-filter-repo --force --invert-paths \
-  --path apps/desktop/electron --path apps/desktop/e2e --path apps/desktop/pr-assets \
-  --path apps/desktop/playwright.config.ts --path apps/desktop/tsconfig.electron.json \
-  --path apps/desktop/tsconfig.e2e.json --path apps/desktop/preview-demo.html \
-  --path apps/desktop/src/app/settings/keybind-settings.tsx \
-  --path apps/desktop/src/plugins/hello-runtime/plugin.runtime.js \
-  --path apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs
+  --path=apps/desktop/electron --path=apps/desktop/e2e --path=apps/desktop/pr-assets \
+  --path=apps/desktop/playwright.config.ts --path=apps/desktop/tsconfig.electron.json \
+  --path=apps/desktop/tsconfig.e2e.json --path=apps/desktop/preview-demo.html \
+  --path=apps/desktop/src/app/settings/keybind-settings.tsx \
+  --path=apps/desktop/src/plugins/hello-runtime/plugin.runtime.js \
+  --path=apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs
 
 # 3. Import the split into the fork as a tracking branch (--no-tags: upstream's
 #    release tags are stragglers here — see caveats). --force on the FIRST
@@ -140,14 +147,18 @@ build graph escaping it.
 ## Sync procedure
 
 ```bash
-# 1. Refresh the split (scratch clone at /opt/data/cache/upstream-split).
-cd /opt/data/cache/upstream-split
-git remote add origin https://github.com/NousResearch/hermes-agent.git   # filter-repo stripped it last run
-git fetch --shallow-since=<2 months back> origin main                    # new commits
-git fetch origin --refetch --no-tags main
+# 1. REBUILD the split scratch FRESH — do NOT refresh in place.
+#    filter-repo only processes LOCAL refs (refs/heads/*); refs/remotes/* are
+#    ignored AND stripped, so an in-place refresh silently filters the stale
+#    local main and the new commits vanish with the gc (measured 2026-08-27).
+cd /opt/data/cache
+rm -rf upstream-split
+git clone --no-checkout --no-tags \
+  --shallow-since=2026-07-25 https://github.com/NousResearch/hermes-agent.git \
+  upstream-split
 # Re-run BOTH filter passes (see one-time setup step 2). --force makes
 # filter-repo idempotent for identical args, which is what keeps the split
-# SHAs deterministic across syncs.
+# SHAs deterministic across syncs (module a git-filter-repo version pin!).
 uvx git-filter-repo --path apps/desktop --path apps/shared --force
 uvx git-filter-repo --force --invert-paths \
   --path apps/desktop/electron --path apps/desktop/e2e --path apps/desktop/pr-assets \
@@ -353,3 +364,30 @@ delta disappears and the fork shrinks toward "deploy config + PWA shell".
   (repo-root fixture outside split paths). Typecheck + build pass; 465 test
   files / 4331 tests pass. Phone test: PASSED (user, 2026-08-16 — PWA works
   on Android; Skills hub mobile layout flagged → ROADMAP #10).
+- **Third sync (2026-08-27)**: upstream `0dfba37b` (v2026.8.27 — the Desktop
+  reconnect family: #93361 resetTileRuntimeBindings + #95600 stale-transcript
+  backstop + #95782). No filter change, BUT the split lineage re-hashed anyway:
+  unpinned `uvx git-filter-repo` had drifted (the new version also breaks the
+  `--path X` space form — see step 2 note). The deterministic-continuation
+  check (`merge-base --is-ancestor`) failed; verified benign by TREE MATCH:
+  `git rev-parse c1772812e^{tree}` found verbatim on the new lineage
+  (`f04955bf`). Merge base `ee2b2d92` (08-12); merge inflation expected —
+  every fork-touched file upstream churned since 08-12 conflicts. Resolved:
+  2 `DU` (keep deleted) + 4 `UD` (upstream MOVED chat-messages.ts →
+  `chat-messages/{index,hydration,parts,reconciliation,tool-parts,types}.ts`,
+  gateway-event.ts → dir, lone-header deleted; our clarify helpers were
+  consolidated into the new module — union imports) + 202 pure-upstream
+  UU/AA → theirs + 37 fork-touched: 27 auto-reapplied via
+  `git apply --3way` of the fork delta (`git diff f04955bf..HEAD`), 10 manual
+  (package.json: +blobatar/driver.js, nanostores 1.4.2, +babel/compiler
+  devDeps for the React Compiler build pipeline; controller: keep upstream
+  preview/layout-reset palette entries, keep fork's keybinds door removal;
+  wiring: union + petOverlay/terminal gates; settings: fork drops the keybinds
+  page — enum/nav/render branch; gateway-settings: fork gates + upstream's
+  simplified cards; tsconfig: keep exclude; main.tsx: union + upstream's
+  selection-copy guard). Contract drift: bridge `profile.remember` implemented
+  (localStorage); `selectPaths` fallback + HEIC ladder + draft-stash event +
+  capability gates all survived. Root manifest: nanoid 3.3.18 + get-windows
+  allowScripts; `.npmrc` excludes for blobatar + nanostores (fresh pins).
+  Typecheck + build pass; vite 8.2.0 React Compiler pipeline. Tests:
+  <fill after run>. Phone test: PENDING (user deploy).

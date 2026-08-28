@@ -203,7 +203,10 @@ async function mintGatewayWsTicket(baseUrl: string): Promise<string> {
 /** GET /api/auth/me — true session liveness (cookie-authed, no false AT expiry). */
 async function hasLiveSession(baseUrl: string): Promise<boolean> {
   try {
-    const response = await fetch(`${baseUrl}/api/auth/me`, { credentials: 'include', signal: AbortSignal.timeout(6_000) })
+    const response = await fetch(`${baseUrl}/api/auth/me`, {
+      credentials: 'include',
+      signal: AbortSignal.timeout(6_000)
+    })
 
     return response.ok
   } catch {
@@ -704,7 +707,9 @@ async function setKeepAwake(on: boolean): Promise<void> {
 
   try {
     if (on && !wakeLockSentinel) {
-      wakeLockSentinel = await (navigator as Navigator & { wakeLock: { request: (t: string) => Promise<{ release: () => Promise<void> }> } }).wakeLock.request('screen')
+      wakeLockSentinel = await (
+        navigator as Navigator & { wakeLock: { request: (t: string) => Promise<{ release: () => Promise<void> }> } }
+      ).wakeLock.request('screen')
     } else if (!on && wakeLockSentinel) {
       await wakeLockSentinel.release()
       wakeLockSentinel = null
@@ -734,7 +739,7 @@ function onBatteryChanged(callback: (onBattery: boolean) => void): () => void {
   }
 
   let disposed = false
-  let battery: (BatteryManager | null) = null
+  let battery: BatteryManager | null = null
 
   const sync = () => {
     if (!disposed && battery) {
@@ -928,8 +933,25 @@ const shim = {
   openWindow: async () => ({ error: 'Multiple windows are not available in the browser build.', ok: false }),
   probeConnectionConfig,
   profile: {
-    get: async () => ({ profile: null }),
-    set: async () => ({ profile: null })
+    get: async () => ({ profile: localStorage.getItem('hermes.mobile.active-profile') ?? null }),
+    // Persist the chosen startup profile so the next boot lands on it
+    // (#79886 semantics, via localStorage instead of Electron IPC).
+    remember: async name => {
+      if (name) {
+        localStorage.setItem('hermes.mobile.active-profile', name)
+      } else {
+        localStorage.removeItem('hermes.mobile.active-profile')
+      }
+      return { profile: name ?? null }
+    },
+    set: async name => {
+      if (name) {
+        localStorage.setItem('hermes.mobile.active-profile', name)
+      } else {
+        localStorage.removeItem('hermes.mobile.active-profile')
+      }
+      return { profile: name ?? null }
+    }
   },
   readClipboard,
   readDir: async path => {
@@ -951,7 +973,15 @@ const shim = {
     return typeof result === 'string' ? result : result?.dataUrl || ''
   },
   readFileText: async filePath =>
-    api<{ binary?: boolean; byteSize?: number; language?: string; mimeType?: string; path: string; text: string; truncated?: boolean }>({
+    api<{
+      binary?: boolean
+      byteSize?: number
+      language?: string
+      mimeType?: string
+      path: string
+      text: string
+      truncated?: boolean
+    }>({
       path: `/api/fs/read-text?path=${encodeURIComponent(filePath)}`
     }),
   revalidateConnection: async () => {
@@ -1038,7 +1068,7 @@ const shim = {
   },
   testConnectionConfig,
   touchBackend: async () => ({ ok: true }),
-  writeClipboard,
+  writeClipboard
   // Deliberately OMITTED (renderer feature-detects and hides the UI):
   // terminal, git, readDir, wakeIndicator, petOverlay, quickEntry, updates,
   // uninstall, bootstrap actions, themes, findInPage, zoom, dataUrlReadMax,
