@@ -389,5 +389,11 @@ delta disappears and the fork shrinks toward "deploy config + PWA shell".
   (localStorage); `selectPaths` fallback + HEIC ladder + draft-stash event +
   capability gates all survived. Root manifest: nanoid 3.3.18 + get-windows
   allowScripts; `.npmrc` excludes for blobatar + nanostores (fresh pins).
-  Typecheck + build pass; vite 8.2.0 React Compiler pipeline. Tests:
-  <fill after run>. Phone test: PENDING (user deploy).
+  Tests: 3 upstream-suite failures fixed — model-menu-panel.test.tsx gained
+  an extra catalog mock in upstream's new reconcile tests (the fork's mount
+  auto-refresh a655324 consumes an extra read); duplicate-stall-indicator.
+  test.tsx REMOVED because upstream RENAMED it to duplicate-activity-
+  indicator.test.tsx (stall → activity indicator; the old path survived the
+  merge only because the re-hashed base lacked it — the renamed file came in
+  as a clean add and passes). 618 test files / 6097 tests pass. Phone test:
+  PENDING (user deploy).
