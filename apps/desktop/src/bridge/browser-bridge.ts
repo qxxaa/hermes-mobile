@@ -343,6 +343,23 @@ async function resolveConnection(profile?: string | null): Promise<HermesConnect
     return buildRemoteConnection(window.location.origin, 'oauth', '', profile)
   }
 
+  // Same-origin self-heal: a stored connection pointing at the origin this
+  // PWA is served from can NEVER need token auth. Loopback token mode injects
+  // the token into the SPA bundle (no user-stored token), and a cookie-gated
+  // gateway (the production shape) rejects the legacy `?token=` WS dial with
+  // 403 — so a stale token-mode entry left over from an earlier build wedges
+  // the app in an eternal "trying to connect…" (REST keeps working via the
+  // cookie, only the WS leg dies). Rewrite it to the oauth/ticket shape once
+  // so it can't poison a later session; the same-origin default below is
+  // byte-identical to a healthy stored oauth entry.
+  if (normalizeRemoteBaseUrl(stored.remoteUrl) === window.location.origin) {
+    if (stored.remoteAuthMode !== 'oauth') {
+      writeStoredConnection(normalizeRemoteBaseUrl(stored.remoteUrl), '', 'oauth', stored.remoteOauthConnected ?? false)
+    }
+
+    return buildRemoteConnection(window.location.origin, 'oauth', '', profile)
+  }
+
   const authMode = stored.remoteAuthMode === 'oauth' ? 'oauth' : 'token'
 
   if (authMode === 'token' && !stored.remoteToken.trim()) {
@@ -604,7 +621,13 @@ async function saveConnectionConfig(payload: DesktopConnectionConfigInput): Prom
   }
 
   const url = normalizeRemoteBaseUrl(payload.remoteUrl || '')
-  const authMode = payload.remoteAuthMode === 'oauth' ? 'oauth' : 'token'
+
+  // Same-origin saves can never be token mode: the PWA's same-origin gateway
+  // is cookie/ticket-gated (a stored token only wedges the WS dial — see
+  // resolveConnection's self-heal). Force the oauth shape so Settings cannot
+  // recreate the stale-token landmine.
+  const authMode =
+    url === window.location.origin ? 'oauth' : payload.remoteAuthMode === 'oauth' ? 'oauth' : 'token'
   const previous = readStoredConnection()
   const stored = writeStoredConnection(
     url,
