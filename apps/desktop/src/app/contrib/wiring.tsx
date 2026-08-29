@@ -1009,11 +1009,17 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     // rows (single-profile installs, legacy pages) keep the id-only path.
     onResumeSession: (sessionId, session) => {
       const rowProfile = session?.profile?.trim()
+      const rowConnectionId = session?.connection_id?.trim()
 
-      if (rowProfile) {
+      // Pin the row's owner route only when it carries an EXPLICIT connection.
+      // An absent or `'local'` id means "resolve ambient" — on the PWA
+      // (remote-only, no local agent) pinning `'local'` makes every untagged
+      // row await a local-agent dial that never lands: eternal "Waking up…",
+      // no session.resume ever sent. The #92454 owner pin exists for
+      // registry-topology rows; untagged rows keep the id-only path.
+      if (rowProfile && rowConnectionId && rowConnectionId !== 'local') {
         requestSessionResume(sessionId, {
-          connectionId: session?.connection_id?.trim() || 'local',
-          ...(session?.connection_id?.trim() ? {} : { mode: 'local' as const }),
+          connectionId: rowConnectionId,
           profile: rowProfile,
           targetProfile: rowProfile
         })
