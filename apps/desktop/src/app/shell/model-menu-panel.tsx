@@ -37,6 +37,7 @@ export interface ModelSelection {
 
 interface ModelMenuPanelProps {
   gateway?: HermesGateway
+  ownerConnectionId?: string
   onSelectModel: (selection: ModelSelection) => Promise<boolean> | void
   profile?: string
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
@@ -48,7 +49,13 @@ interface ModelMenuPanelProps {
  * surface's session, remember the pick as a global preset, keep the optimistic
  * stores honest, and roll back on a failed gateway write.
  */
-export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', requestGateway }: ModelMenuPanelProps) {
+export function ModelMenuPanel({
+  gateway,
+  onSelectModel,
+  ownerConnectionId,
+  profile = 'default',
+  requestGateway
+}: ModelMenuPanelProps) {
   const { t } = useI18n()
   const copy = t.shell.modelMenu
   const [refreshing, setRefreshing] = useState(false)
@@ -72,7 +79,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
   // back to the catalog's reported current, and a non-reactive read would
   // never repaint that fallback once the catalog resolved.
   const modelOptions = useQuery({
-    queryKey: modelOptionsQueryKey(profile, activeSessionId),
+    queryKey: modelOptionsQueryKey(profile, activeSessionId, ownerConnectionId),
     queryFn: (): Promise<ModelOptionsResponse> =>
       requestModelOptions({ gateway, profile, request: requestGateway, sessionId: activeSessionId })
   })
@@ -83,13 +90,19 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
   // catalog stays interactive on the cached data and repaints when the live
   // list lands — the same call the manual "Refresh Models" button makes, just
   // silent and automatic. `active` guards against setQueryData after close.
+  // The key MUST carry ownerConnectionId (same 3-arg shape as the subscribed
+  // query above): with an owner set, a 2-arg key writes a cache entry the
+  // menu never reads and the repaint silently misses.
   useEffect(() => {
     let active = true
 
     void requestModelOptions({ gateway, refresh: true, sessionId: activeSessionId })
       .then(next => {
         if (active) {
-          queryClient.setQueryData<ModelOptionsResponse>(modelOptionsQueryKey(profile, activeSessionId), next)
+          queryClient.setQueryData<ModelOptionsResponse>(
+            modelOptionsQueryKey(profile, activeSessionId, ownerConnectionId),
+            next
+          )
         }
       })
       .catch(() => {
@@ -101,7 +114,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
     return () => {
       active = false
     }
-  }, [activeSessionId, gateway, profile, queryClient])
+  }, [activeSessionId, gateway, ownerConnectionId, profile, queryClient])
 
   const { model: optionsModel, provider: optionsProvider } = currentPickerSelection(
     { model: currentModel, provider: currentProvider },
@@ -120,7 +133,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
     setRefreshing(true)
 
     try {
-      const queryKey = modelOptionsQueryKey(profile, activeSessionId)
+      const queryKey = modelOptionsQueryKey(profile, activeSessionId, ownerConnectionId)
 
       const next = await requestModelOptions({
         gateway,
@@ -279,6 +292,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
       }
       gateway={gateway}
       includeMoa
+      ownerConnectionId={ownerConnectionId}
       profile={profile}
       request={requestGateway}
       sessionId={activeSessionId}

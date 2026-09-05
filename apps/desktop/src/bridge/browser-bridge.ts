@@ -1029,11 +1029,11 @@ const shim = {
     return { cwd: cwd || result.cwd || '', sanitized: !cwd && Boolean(result.cwd) }
   },
   saveConnectionConfig,
-  saveImageBuffer: async (data: ArrayBuffer | Uint8Array, ext: string) => {
+  saveImageBuffer: async (data: ArrayBuffer | Uint8Array, ext: string, name?: string) => {
     const buffer = data instanceof Uint8Array ? data.buffer : data
     const mime = ext === 'jpg' ? 'image/jpeg' : ext === 'svg' ? 'image/svg+xml' : `image/${ext}`
 
-    return uploadChatImage(new Blob([buffer as ArrayBuffer], { type: mime }), `pasted-image.${ext}`)
+    return uploadChatImage(new Blob([buffer as ArrayBuffer], { type: mime }), name || `pasted-image.${ext}`)
   },
   saveClipboardImage: async () => {
     // Browser clipboard read (Chromium): the gateway's /login flow already
