@@ -71,6 +71,11 @@ git clone --no-checkout \
 cd /opt/data/cache/upstream-split
 uvx git-filter-repo --path apps/desktop --path apps/shared --force
 rm -rf .git/filter-repo/already_ran   # pass 1 writes it; pass 2 would prompt (EOF) otherwise
+# NOTE (2026-09-05): do NOT quote the scripts brace expansion below. Quoted,
+# `--path="apps/desktop/scripts/{...}.mjs"` reaches filter-repo as one literal
+# brace path, strips NOTHING under scripts/, and the tree-match check then
+# fails with content divergence (misread as a re-hash). Keep it unquoted so
+# bash expands it to one --path= per file.
 uvx git-filter-repo --force --invert-paths \
   --path=apps/desktop/electron --path=apps/desktop/e2e --path=apps/desktop/pr-assets \
   --path=apps/desktop/playwright.config.ts --path=apps/desktop/tsconfig.electron.json \
@@ -482,3 +487,26 @@ delta disappears and the fork shrinks toward "deploy config + PWA shell".
   merge only because the re-hashed base lacked it — the renamed file came in
   as a clean add and passes). 618 test files / 6097 tests pass. Phone test:
   PENDING (user deploy).
+- **Fourth sync (2026-09-05)**: split `f2e956ba` (322 desktop commits since
+  v2026.8.27 — Bot Mode design system, owner-route threading, tips system,
+  pool limits, `ru` locale). Lineage CONTINUOUS (no re-hash; merge base is the
+  old split head `ed4fb0c01` itself) — only 5 `UU`: package.json (ours +
+  widened engines), assert-root-install (upstream rewrite minus the Electron
+  floor + fork Node gate), wiring `onResumeSession` (upstream's
+  `sessionOwnerRouteFromRow` returns undefined for untagged rows — SUBSUMES
+  the fork's untagged-row guard, so the guard was dropped), tooltip (upstream
+  shape + fork `pointer-coarse:hidden`), vitest.config (ours). 0 `DU`/`UD`;
+  stripped-paths assertion clean. Junk watch: upstream committed two stray
+  macOS lockfiles (`apps/desktop/'/var/folders/...mutex`, menu-label PRs) —
+  unreferenced, removed. Fork adaptations: `PoolLimits` inlined in global.d.ts
+  (never the `../electron/pool-limits` import — file absent here); new
+  `pool-limits-setting.tsx` leaf-gated on `getPoolLimits` + bounds inlined
+  (it imports `../../../electron/pool-limits`, which would fail the fork
+  build); model-menu effect threads `ownerConnectionId` (2-arg setQueryData
+  misses the new owner-suffixed key); `ru.ts` gains the fork `share` block +
+  `fileAttachFailed` (strict parity); shim `saveImageBuffer` takes upstream's
+  `name`. Deps: no drift (root + desktop deps/overrides unchanged; engines
+  widened both manifests). Tests: model-menu-panel count 2→3 (mount query +
+  mount effect + manual refresh); relay-deliver-budget backend-mirror tests
+  `runIf`'d (hermes_cli/tui_gateway absent here). 723 files / 7240 tests
+  (2 skipped). Phone test: PENDING (user deploy).
