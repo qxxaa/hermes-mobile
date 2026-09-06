@@ -8,7 +8,7 @@ WORKDIR /workspace
 COPY package.json package-lock.json ./
 COPY apps/desktop/package.json apps/desktop/package.json
 COPY apps/shared/package.json apps/shared/package.json
-RUN npm ci
+RUN npm install --global npm@11.17.0 && npm --version | grep -Fx '11.17.0' && npm ci
 COPY apps ./apps
 RUN printf '%s' "$SOURCE_REVISION" | grep -Eq '^[0-9a-f]{40}$' \
     || { echo 'SOURCE_REVISION must be exactly 40 lowercase hexadecimal characters' >&2; exit 1; }
@@ -18,7 +18,7 @@ FROM nginx:1.31.5-alpine@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb64220457
 
 ARG SOURCE_REVISION
 ARG SOURCE_BRANCH=main
-LABEL org.opencontainers.image.source="https://github.com/sremes/hermes-mobile" \
+LABEL org.opencontainers.image.source="https://github.com/qxxaa/hermes-mobile" \
       org.opencontainers.image.revision="$SOURCE_REVISION" \
       org.opencontainers.image.version="$SOURCE_BRANCH"
 
