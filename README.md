@@ -89,6 +89,23 @@ The service worker and manifest only activate over HTTPS, so installability,
 the offline shell, and the share target appear on this deployment (not on
 plain-HTTP LAN dev).
 
+## Container deployment
+
+A GitHub Actions workflow publishes a frontend-only nginx image for successful
+pushes to `main` as `ghcr.io/qxxaa/hermes-mobile`. It serves the PWA on port 80 and
+proxies same-origin gateway traffic to the separately managed Hermes gateway.
+It does not contain Hermes Agent or a backend.
+
+Set the required `HERMES_GATEWAY_URL` to an HTTP(S) DNS or IPv4 origin that the
+container can reach. The URL may include a valid port and trailing slash, but
+not credentials, path prefixes, query strings, or fragments. A standalone
+example using the preexisting `genesis` network, backend service
+`hermes-agent-test`, and host port `8791` is in `deploy/compose.example.yaml`. It is an
+example only and does not modify a live deployment.
+
+See `deploy/container/README.md` for runtime validation, trusted outer proxy
+behavior, release behavior, and the Docker-backed transport fixture.
+
 Two deployment gotchas that have bitten before:
 
 - **WebSocket upgrades are the make-or-break leg.** The `/api` location in the
