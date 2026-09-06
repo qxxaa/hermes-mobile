@@ -1,0 +1,18 @@
+# Frontend only. hermes-agent-test already runs on the genesis network.
+services:
+  hermes-mobile-test:
+    image: ghcr.io/qxxaa/hermes-mobile:latest
+    ports:
+      - "8791:80"
+    environment:
+      HERMES_GATEWAY_URL: http://hermes-agent-test:9119
+    networks:
+      - genesis
+    restart: unless-stopped
+
+networks:
+  genesis:
+    external: true
+
+# Rollback: replace the image value with
+# ghcr.io/qxxaa/hermes-mobile@sha256:<previous-published-digest>.

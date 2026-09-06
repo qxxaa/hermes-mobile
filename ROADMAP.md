@@ -81,6 +81,15 @@ The read side works (edited files clickable, diffs render). Write side:
 - `src/app/skills/*` is upstream-owned and keeps moving in syncs — expect to
   re-apply the mobile layout each sync until upstream fixes it upstream
 
+### 11. Container image release evidence
+
+- The frontend-only nginx image and `main` publishing workflow are implemented
+  in this branch, pending Docker-capable CI execution, GHCR publication,
+  dual-version pull and rollback verification, and a real phone deployment.
+- The transport fixture is intentionally not proof of Hermes gateway behavior.
+  No automatic upstream tracking, schedules, cleanup, or image expiration is
+  planned as part of this item.
+
 ## Explicitly out of scope
 
 - `git.scanRepos` — no gateway repo-scan endpoint; the app resolves the single
