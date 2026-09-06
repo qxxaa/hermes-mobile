@@ -51,6 +51,20 @@ Known limits: no native file picker (browser picker instead), no desktop-only
 features (terminal, local git writes, native menus), and the outgoing
 `navigator.share` API is not wired up yet.
 
+## Enter on touch devices
+
+On touch-primary devices, plain Enter inserts a newline; the Send button keeps
+its existing submit/steer behaviour. Desktop Enter and modified shortcuts are
+unchanged, and autocomplete selection and IME confirmation keep priority.
+
+Detection uses `(pointer: coarse)` unless both `(any-pointer: fine)` and
+`(any-hover: hover)` match. A fine pointer without hover does not turn a phone
+into a desktop. This follows the detection fix proposed in
+[hermes-webui PR #6476](https://github.com/nesquena/hermes-webui/pull/6476).
+It is a pointer heuristic, not keyboard detection: attaching a keyboard without
+a mouse/trackpad may leave newline mode enabled. Screen width is not used, so
+rotation and narrow desktop windows do not themselves change Enter behaviour.
+
 ## Development
 
 ```bash
