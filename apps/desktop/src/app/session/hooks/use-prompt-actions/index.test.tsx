@@ -1,10 +1,13 @@
 import { JsonRpcGatewayError } from '@hermes/shared'
+import { QueryClient } from '@tanstack/react-query'
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 import type { MutableRefObject } from 'react'
 import { useEffect, useRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ClientSessionState } from '@/app/types'
 import { getSession } from '@/hermes'
+import { chatMessageText } from '@/lib/chat-messages'
 import { textPart } from '@/lib/chat-messages'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { $composerAttachments, $composerDraft, type ComposerAttachment, setComposerDraft } from '@/store/composer'
@@ -13,6 +16,7 @@ import { requestGatewayForAgent } from '@/store/gateway'
 import { $goalsBySession, setSessionGoal } from '@/store/goals'
 import { $hudMode } from '@/store/hud'
 import { $notifications, clearNotifications } from '@/store/notifications'
+import { setGatewayState } from '@/store/session'
 import {
   $busy,
   $connection,
@@ -28,7 +32,11 @@ import {
 } from '@/store/session'
 import { dropSessionState, publishSessionState } from '@/store/session-states'
 import { $wakeWord, resetWakeWordState } from '@/store/wake-word'
+import type { RpcEvent } from '@/types/hermes'
 import type { SessionInfo } from '@/types/hermes'
+
+import { useMessageStream } from '../use-message-stream'
+import { STREAM_DELTA_FLUSH_MS } from '../use-message-stream/utils'
 
 import { clearSingleFlightSessionResumeState } from './single-flight-resume'
 import { SESSION_COMPRESS_TIMEOUT_MS } from './slash'
@@ -248,6 +256,335 @@ function Harness({
 
   return null
 }
+
+describe('Mobile Send and explicit steer stream parity', () => {
+  const SID = 'steer-order-session'
+
+  let handleEvent: ((event: RpcEvent) => void) | null = null
+  let busySend: ((text: string) => Promise<boolean>) | null = null
+  let slash: ((text: string) => Promise<void>) | null = null
+  let states: Map<string, ClientSessionState>
+
+  /** Scripted command acknowledgement; the production hooks own stream handling. */
+  const requestGatewayMock = vi.fn(async (method: string): Promise<unknown> =>
+    method === 'command.dispatch' || method === 'slash.exec'
+      ? { type: 'exec', output: 'Steer queued: inspect reconnect' }
+      : {}
+  )
+
+  const requestGateway = requestGatewayMock as unknown as <T>(
+    method: string,
+    params?: Record<string, unknown>,
+    timeoutMs?: number
+  ) => Promise<T>
+
+  function Harness() {
+    const activeSessionIdRef = useRef<null | string>(SID)
+    const sessionStateByRuntimeIdRef = useRef(new Map<string, ClientSessionState>())
+    const queryClientRef = useRef(new QueryClient())
+    const busyRef = useRef(false)
+    const runtimeIdByStoredSessionIdRef = useRef(new Map<string, string>())
+    const selectedStoredSessionIdRef = useRef<null | string>(SID)
+
+    const updateSessionState = (sessionId: string, updater: (state: ClientSessionState) => ClientSessionState) => {
+      const current = sessionStateByRuntimeIdRef.current.get(sessionId) ?? createClientSessionState()
+      const next = updater(current)
+      sessionStateByRuntimeIdRef.current.set(sessionId, next)
+
+      return next
+    }
+
+    const stream = useMessageStream({
+      activeSessionIdRef,
+      hydrateFromStoredSession: vi.fn(async () => undefined),
+      queryClient: queryClientRef.current,
+      refreshHermesConfig: vi.fn(async () => undefined),
+      refreshSessions: vi.fn(async () => undefined),
+      sessionStateByRuntimeIdRef,
+      updateSessionState
+    })
+
+    const actions = usePromptActions({
+      activeSessionId: SID,
+      activeSessionIdRef,
+      branchCurrentSession: async () => true,
+      busyRef,
+      createBackendSessionForSend: async () => SID,
+      getRoutedStoredSessionId: () => null,
+      getRuntimeIdForStoredSession: () => null,
+      getRouteToken: () => 'token',
+      handleSkinCommand: () => '',
+      openMemoryGraph: () => undefined,
+      refreshSessions: async () => undefined,
+      requestGateway,
+      resumeStoredSession: () => undefined,
+      runtimeIdByStoredSessionIdRef,
+      selectedStoredSessionIdRef,
+      startFreshSessionDraft: () => undefined,
+      sttEnabled: false,
+      updateSessionState
+    })
+
+    const { submitText, executeSlashCommand } = actions
+
+    useEffect(() => {
+      handleEvent = stream.handleGatewayEvent
+      busySend = (text: string) => submitText(text, { busySteer: true })
+      slash = executeSlashCommand
+      states = sessionStateByRuntimeIdRef.current
+    }, [stream.handleGatewayEvent, submitText, executeSlashCommand])
+
+    return null
+  }
+
+  async function mountHarness() {
+    vi.useFakeTimers()
+    render(<Harness />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+  }
+
+  const flushDeltas = async () => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STREAM_DELTA_FLUSH_MS)
+    })
+  }
+
+  const emit = (event: RpcEvent) => act(() => handleEvent?.(event))
+
+  beforeEach(() => {
+    states = new Map()
+    setGatewayState('open')
+    requestGatewayMock.mockClear()
+  })
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it.each(['automatic', 'explicit'] as const)('%s steering leaves the active stream and tools intact', async entry => {
+    await mountHarness()
+    emit({ payload: {}, session_id: SID, type: 'message.start' })
+    emit({ payload: { text: 'reading the first file' }, session_id: SID, type: 'message.delta' })
+    await flushDeltas()
+    emit({
+      payload: { args: { path: 'file.ts' }, name: 'read_file', tool_id: 'tool-1' },
+      session_id: SID,
+      type: 'tool.start'
+    })
+    const before = states.get(SID)!
+    const activeMessage = before.messages.find(message => message.id === before.streamId)
+    expect(activeMessage).toBeDefined()
+    requestGatewayMock.mockClear()
+
+    await act(async () => {
+      if (entry === 'automatic') {
+        expect(await busySend!('inspect reconnect')).toBe(true)
+      } else {
+        await slash!('/steer inspect reconnect')
+      }
+    })
+
+    if (entry === 'automatic') {
+      expect(requestGatewayMock).toHaveBeenCalledExactlyOnceWith('command.dispatch', {
+        session_id: SID,
+        name: 'steer',
+        arg: 'inspect reconnect'
+      })
+    } else {
+      // Existing Mobile /steer uses slash.exec; the backend forwards that
+      // pending-input command to the same command.dispatch handler.
+      expect(requestGatewayMock).toHaveBeenCalledExactlyOnceWith('slash.exec', {
+        session_id: SID,
+        command: 'steer inspect reconnect'
+      })
+    }
+
+    const after = states.get(SID)!
+    expect(after.streamId).toBe(before.streamId)
+    expect(after.busy).toBe(before.busy)
+    expect(after.turnStartedAt).toBe(before.turnStartedAt)
+    expect(after.messages.find(message => message.id === before.streamId)).toBe(activeMessage)
+    expect(after.messages.filter(message => message.role === 'system').map(chatMessageText)).toEqual([
+      'slash:/steer\nSteer queued: inspect reconnect'
+    ])
+    expect(after.messages.filter(message => message.role === 'user')).toHaveLength(0)
+
+    emit({
+      payload: { name: 'read_file', result: 'read completed', tool_id: 'tool-1' },
+      session_id: SID,
+      type: 'tool.complete'
+    })
+    emit({ payload: { text: ' and checking reconnect next' }, session_id: SID, type: 'message.delta' })
+    await flushDeltas()
+    emit({
+      payload: { text: 'reading the first file and checking reconnect next' },
+      session_id: SID,
+      type: 'message.complete'
+    })
+    const settled = states.get(SID)!
+    expect(settled.messages.some(message => chatMessageText(message).includes('checking reconnect next'))).toBe(true)
+    expect(settled.messages.every(message => !message.pending)).toBe(true)
+  })
+})
+
+describe('Mobile busy Send', () => {
+  it.each([{}, { type: 'exec' }, { type: 'send', message: '' }, null])(
+    'rejects an invalid acknowledgement without replay (%j)',
+    async reply => {
+      const requestGateway = vi.fn(async () => reply as never)
+      let handle: HarnessHandle | null = null
+      await actRender(
+        <Harness
+          onReady={h => (handle = h)}
+          refreshSessions={vi.fn(async () => undefined)}
+          requestGateway={requestGateway}
+        />
+      )
+      expect(await handle!.submitText('guidance', { busySteer: true })).toBe(false)
+      expect(requestGateway).toHaveBeenCalledTimes(1)
+      expect(getQueuedPrompts(RUNTIME_SESSION_ID)).toEqual([])
+    }
+  )
+
+  it('does not retry or queue an ambiguous dispatch failure', async () => {
+    const requestGateway = vi.fn(async () => {
+      throw new Error('connection lost')
+    })
+
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness
+        onReady={h => (handle = h)}
+        refreshSessions={vi.fn(async () => undefined)}
+        requestGateway={requestGateway}
+      />
+    )
+    expect(await handle!.submitText('guidance', { busySteer: true })).toBe(false)
+    expect(requestGateway).toHaveBeenCalledTimes(1)
+    expect(getQueuedPrompts(RUNTIME_SESSION_ID)).toEqual([])
+    expect($notifications.get().some(n => n.message.includes('not automatically retried'))).toBe(true)
+  })
+
+  it('rejects mismatched composer ownership before sending', async () => {
+    const requestGateway = vi.fn(async () => ({ type: 'exec', output: 'Steer queued' }) as never)
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness
+        onReady={h => (handle = h)}
+        refreshSessions={vi.fn(async () => undefined)}
+        requestGateway={requestGateway}
+      />
+    )
+    expect(await handle!.submitText('guidance', { busySteer: true, composerScope: 'other-session' })).toBe(false)
+    expect(requestGateway).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])('honours a backend-directed next-turn fallback with target busy=%s', async busy => {
+    const requestGateway = vi.fn(
+      async (method: string) => (method === 'command.dispatch' ? { type: 'send', message: 'guidance' } : {}) as never
+    )
+
+    publishSessionState(RUNTIME_SESSION_ID, { ...createClientSessionState(RUNTIME_SESSION_ID), busy })
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness
+        onReady={h => (handle = h)}
+        refreshSessions={vi.fn(async () => undefined)}
+        requestGateway={requestGateway}
+      />
+    )
+    expect(await handle!.submitText('guidance', { busySteer: true })).toBe(true)
+
+    if (busy) {
+      expect(getQueuedPrompts(RUNTIME_SESSION_ID).map(entry => entry.text)).toEqual(['guidance'])
+      expect(requestGateway).toHaveBeenCalledTimes(1)
+    } else {
+      expect(requestGateway).toHaveBeenCalledWith(
+        'prompt.submit',
+        { session_id: RUNTIME_SESSION_ID, text: 'guidance' },
+        1_800_000
+      )
+      expect(requestGateway).toHaveBeenCalledTimes(2)
+    }
+  })
+
+  it('keeps a late acknowledgement on its original session', async () => {
+    let finish!: (reply: unknown) => void
+
+    const requestGateway = vi.fn(
+      () =>
+        new Promise(resolve => {
+          finish = resolve
+        })
+    ) as never
+
+    const activeSessionIdRef = { current: RUNTIME_SESSION_ID as string | null }
+    const selectedStoredSessionIdRef = { current: RUNTIME_SESSION_ID as string | null }
+    const onUpdateState = vi.fn()
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness
+        activeSessionIdRef={activeSessionIdRef}
+        onReady={h => (handle = h)}
+        onUpdateState={onUpdateState}
+        refreshSessions={vi.fn(async () => undefined)}
+        requestGateway={requestGateway}
+        selectedStoredSessionIdRef={selectedStoredSessionIdRef}
+      />
+    )
+    let pending!: Promise<boolean>
+    await act(async () => {
+      pending = handle!.submitTextRaw('guidance', { busySteer: true })
+    })
+    activeSessionIdRef.current = 'other-runtime'
+    selectedStoredSessionIdRef.current = 'other-stored'
+    await act(async () => {
+      finish({ type: 'exec', output: 'Steer queued' })
+      expect(await pending).toBe(true)
+    })
+    expect(onUpdateState).toHaveBeenCalledExactlyOnceWith(RUNTIME_SESSION_ID, RUNTIME_SESSION_ID, expect.anything())
+  })
+
+  afterEach(() => {
+    cleanup()
+    $composerAttachments.set([])
+    $queuedPromptsBySession.set({})
+    dropSessionState(RUNTIME_SESSION_ID)
+    clearNotifications()
+    vi.restoreAllMocks()
+  })
+
+  it('dispatches steer without altering the live assistant message', async () => {
+    const requestGateway = vi.fn(async () => ({ type: 'exec', output: 'Steer queued' }) as never)
+    const assistant = { id: 'live-reply', role: 'assistant', parts: [textPart('still working')], pending: true }
+    let nextState: Record<string, unknown> | undefined
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness
+        onReady={h => (handle = h)}
+        onSeedState={state => (nextState = state)}
+        refreshSessions={vi.fn(async () => undefined)}
+        requestGateway={requestGateway}
+        seedMessages={[assistant]}
+        seedStreamId="live-reply"
+        seedTurnStartedAt={123}
+      />
+    )
+
+    expect(await handle!.submitText('also check reconnect\n  keep working', { busySteer: true })).toBe(true)
+    expect(requestGateway).toHaveBeenCalledExactlyOnceWith('command.dispatch', {
+      session_id: RUNTIME_SESSION_ID,
+      name: 'steer',
+      arg: 'also check reconnect\n  keep working'
+    })
+    expect(nextState).toMatchObject({ streamId: 'live-reply', turnStartedAt: 123 })
+    expect((nextState!.messages as unknown[])[0]).toBe(assistant)
+    expect(nextState!.messages).toHaveLength(2)
+  })
+})
 
 describe('usePromptActions /title', () => {
   beforeEach(() => {

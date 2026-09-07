@@ -65,6 +65,18 @@ It is a pointer heuristic, not keyboard detection: attaching a keyboard without
 a mouse/trackpad may leave newline mode enabled. Screen width is not used, so
 rotation and narrow desktop windows do not themselves change Enter behaviour.
 
+## Busy Send in this fork
+
+Ordinary text sent while the agent is working uses non-interrupting steering,
+through the same backend handler as `/steer`. This is hardwired for this private
+fork: `display.busy_input_mode` does not change Mobile's Send behaviour.
+
+Explicit `/steer`, Stop, redirect and queue controls keep their existing paths.
+Attachments, compaction and blocking approval/secret/sudo prompts still use the
+existing next-turn queue. Unconfirmed steering restores the draft without an
+automatic retry; a backend-directed next-turn fallback is still honoured.
+
+
 ## Development
 
 ```bash

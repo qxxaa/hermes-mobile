@@ -102,6 +102,28 @@ describe('useSessionTileActions sleep/wake session recovery', () => {
     vi.restoreAllMocks()
   })
 
+  it('steers a tile without redirecting or targeting the foreground session', async () => {
+    requestGatewayMock.mockResolvedValue({ type: 'exec', output: 'Steer queued' })
+    const { result } = renderTileActions()
+
+    await act(async () => {
+      expect(
+        await result.current.submitText('keep working', {
+          busySteer: true,
+          attachments: [],
+          composerScope: STORED_SESSION_ID
+        })
+      ).toBe(true)
+    })
+
+    expect(requestGatewayMock).toHaveBeenCalledExactlyOnceWith('command.dispatch', {
+      session_id: RUNTIME_SESSION_ID,
+      name: 'steer',
+      arg: 'keep working'
+    })
+    expect($activeSessionId.get()).toBe('foreground-runtime')
+  })
+
   it('resumes the stored session and retries once when session.interrupt reports "session not found"', async () => {
     const calls: { method: string; params?: Record<string, unknown> }[] = []
     let interruptAttempts = 0

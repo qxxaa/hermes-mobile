@@ -3,7 +3,7 @@ import { type MutableRefObject, useCallback, useRef } from 'react'
 
 import { getProfiles } from '@/hermes'
 import type { Translations } from '@/i18n'
-import { type ChatMessage, toChatMessages } from '@/lib/chat-messages'
+import { type ChatMessage, textPart, toChatMessages } from '@/lib/chat-messages'
 import { parseCommandDispatch, parseSlashCommand, sessionTitle } from '@/lib/chat-runtime'
 import {
   type CommandsCatalogLike,
@@ -72,6 +72,84 @@ import {
   type SubmitTextOptions,
   withSessionNotFoundResume
 } from './utils'
+
+/** Mobile busy Send: reuse the backend steer command without parsing user text
+ *  as a slash command or interrupting the active stream. No config policy. */
+export async function submitSteeringText(options: {
+  text: string
+  sessionId: string | null
+  storedSessionId: string | null
+  composerScope?: string | null
+  request: GatewayRequest
+  update: (
+    sessionId: string,
+    updater: (state: ClientSessionState) => ClientSessionState,
+    storedSessionId: string | null
+  ) => unknown
+  submit: (text: string, options: SubmitTextOptions) => Promise<boolean> | boolean
+}): Promise<boolean> {
+  const { text, sessionId, storedSessionId } = options
+
+  if (!sessionId || !text.trim()) {
+    return false
+  }
+
+  const queueKey = resolveComposerSessionKey(storedSessionId, $sessions.get()) || storedSessionId || sessionId
+
+  if (options.composerScope !== undefined && options.composerScope !== queueKey) {
+    return false
+  }
+
+  const render = (output: string) =>
+    options.update(
+      sessionId,
+      state => ({
+        ...state,
+        messages: [
+          ...state.messages,
+          {
+            id: `busy-notice-${crypto.randomUUID()}`,
+            role: 'system',
+            parts: [textPart(slashStatusText('/steer', output))]
+          }
+        ]
+      }),
+      storedSessionId
+    )
+
+  try {
+    const result = await options.request<{ type?: string; output?: unknown; message?: unknown }>('command.dispatch', {
+      session_id: sessionId,
+      name: 'steer',
+      arg: text
+    })
+
+    if (result?.type === 'exec' && typeof result.output === 'string') {
+      render(result.output)
+
+      return true
+    }
+
+    // Only the backend can direct a next-turn fallback. A timeout or malformed
+    // acknowledgement is not permission to replay a potentially delivered steer.
+    if (result?.type === 'send' && typeof result.message === 'string' && result.message.trim()) {
+      if (isTargetSessionBusy($sessionStates.get(), sessionId, false)) {
+        return Boolean(enqueueQueuedPrompt(queueKey, { attachments: [], text: result.message }))
+      }
+
+      return await options.submit(result.message, { attachments: [], sessionId, storedSessionId })
+    }
+  } catch {
+    // Keep the caller's draft; do not retry an ambiguous write.
+  }
+
+  notify({
+    kind: 'error',
+    message: 'Steering delivery could not be confirmed. Your message has been kept; it was not automatically retried.'
+  })
+
+  return false
+}
 
 // Manual compression is LLM-bound and routinely outlives the desktop's 30s
 // default WS request timeout on large sessions. The gateway blocks its own
