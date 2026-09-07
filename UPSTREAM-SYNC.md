@@ -10,6 +10,23 @@ The alternative models were considered and rejected: continuous per-commit merge
 porting (divergence grows until a port IS a re-port). The watcher below decides
 *when* a sync is due; the split-merge procedure below is *how* it runs.
 
+## Private busy-Send patch
+
+`fix/mobile-busy-input-mode` starts at Mobile upstream `d35d93db`. It adapts
+Agent commit `585893e26f` to hardwired steering, without the config store,
+config hook or borrowed queue helper. All implementation and tests live in
+existing files.
+
+The composer passes `busySteer` through `SubmitTextOptions`; main-chat and tile
+submit handlers call `submitSteeringText` in the existing `slash.ts`. The typed
+`/steer` handler is deliberately unchanged. During a renderer sync, preserve
+that distinction: ordinary busy Send must not regress to `session.redirect`.
+Check dispatch acknowledgements, target-session ownership, rejected-draft
+recovery, attachments/blocking-prompt queueing and stream continuity.
+
+This branch intentionally excludes the fork's separate touch-newline and
+container-publishing patches. They remain on fork main.
+
 ## The containment problem (measured 2026-08-15)
 
 A raw `git merge upstream/main` of the full monorepo was probed on a throwaway

@@ -51,6 +51,17 @@ Known limits: no native file picker (browser picker instead), no desktop-only
 features (terminal, local git writes, native menus), and the outgoing
 `navigator.share` API is not wired up yet.
 
+## Busy Send in this fork
+
+Ordinary text sent while the agent is working uses non-interrupting steering,
+through the same backend handler as `/steer`. This is hardwired for this private
+fork: `display.busy_input_mode` does not change Mobile's Send behaviour.
+
+Explicit `/steer`, Stop, redirect and queue controls keep their existing paths.
+Attachments, compaction and blocking approval/secret/sudo prompts still use the
+existing next-turn queue. Unconfirmed steering restores the draft without an
+automatic retry; a backend-directed next-turn fallback is still honoured.
+
 ## Development
 
 ```bash

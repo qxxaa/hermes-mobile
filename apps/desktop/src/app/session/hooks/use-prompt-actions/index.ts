@@ -65,7 +65,7 @@ import {
   runRewindSubmit,
   type SurvivorUserRowIds
 } from './rewind'
-import { useSlashCommand } from './slash'
+import { submitSteeringText, useSlashCommand } from './slash'
 import { useSubmitPrompt } from './submit'
 import {
   blobToDataUrl,
@@ -609,6 +609,29 @@ export function usePromptActions({
       const visibleText = sanitizeComposerInput(rawText).trim()
       const attachments = options?.attachments ?? $composerAttachments.get()
 
+      if (options?.busySteer) {
+        if (attachments.length) {
+          return false
+        }
+
+        const sessionId = options.sessionId ?? activeSessionIdRef.current
+
+        const storedSessionId =
+          options.storedSessionId ??
+          (sessionId ? $sessionStates.get()[sessionId]?.storedSessionId : null) ??
+          (sessionId === activeSessionIdRef.current ? selectedStoredSessionIdRef.current : null)
+
+        return submitSteeringText({
+          text: rawText,
+          sessionId,
+          storedSessionId,
+          composerScope: options.composerScope,
+          request: requestGateway,
+          update: updateSessionState,
+          submit: submitPromptText
+        })
+      }
+
       if (!attachments.length && SLASH_COMMAND_RE.test(visibleText)) {
         triggerHaptic('selection')
         // Forward the explicit target (background queue drain, tile) — dropping
@@ -620,7 +643,14 @@ export function usePromptActions({
 
       return await submitPromptText(rawText, options)
     },
-    [executeSlashCommand, submitPromptText]
+    [
+      activeSessionIdRef,
+      executeSlashCommand,
+      requestGateway,
+      selectedStoredSessionIdRef,
+      submitPromptText,
+      updateSessionState
+    ]
   )
 
   const transcribeVoiceAudio = useCallback(

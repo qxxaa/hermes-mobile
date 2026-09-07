@@ -57,6 +57,7 @@ import {
   runRewindSubmit,
   type SurvivorUserRowIds
 } from '../session/hooks/use-prompt-actions/rewind'
+import { submitSteeringText } from '../session/hooks/use-prompt-actions/slash'
 import { useSubmitPrompt } from '../session/hooks/use-prompt-actions/submit'
 import {
   markSessionRecentlyInterrupted,
@@ -310,6 +311,23 @@ export function useSessionTileActions({ requestGateway, runtimeId, scope, stored
       const visibleText = rawText.trim()
       const attachments = options?.attachments ?? scope.attachments.$attachments.get()
 
+      if (options?.busySteer) {
+        if (attachments.length) {
+          return false
+        }
+
+        // Capture this tile's identity before awaiting the acknowledgement.
+        return submitSteeringText({
+          text: rawText,
+          sessionId: runtimeIdRef.current,
+          storedSessionId: storedIdRef.current,
+          composerScope: options.composerScope,
+          request: requestSessionGateway,
+          update: (sessionId, updater) => sessionTileDelegate()?.updateSession(sessionId, updater),
+          submit: submitPromptText
+        })
+      }
+
       listTileSession(visibleText)
 
       if (!attachments.length && SLASH_COMMAND_RE.test(visibleText)) {
@@ -321,7 +339,7 @@ export function useSessionTileActions({ requestGateway, runtimeId, scope, stored
 
       return await submitPromptText(rawText, options)
     },
-    [listTileSession, scope.attachments.$attachments, submitPromptText]
+    [listTileSession, requestSessionGateway, scope.attachments.$attachments, submitPromptText]
   )
 
   const cancelRun = useCallback(async () => {
