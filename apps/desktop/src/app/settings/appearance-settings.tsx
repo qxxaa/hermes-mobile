@@ -23,6 +23,7 @@ import { $activeGatewayProfile, $profiles, normalizeProfileKey } from '@/store/p
 import { $reactionsEnabled, setReactionsEnabled } from '@/store/reactions-enabled'
 import { $reasoningCollapsedByDefault, setReasoningCollapsedByDefault } from '@/store/reasoning-disclosure'
 import { $sessionListDensity, type SessionListDensity, setSessionListDensity } from '@/store/session-list-density'
+import { $stickyUserMessagesEnabled, setStickyUserMessagesEnabled } from '@/store/sticky-user-messages'
 import { $tabStripDefault, setTabStripDefault, type TabStripDefault } from '@/store/tabstrip-prefs'
 import { $spentTipCount, $tipsEnabled, resetTips, setTipsEnabled } from '@/store/tips'
 import {
@@ -418,6 +419,7 @@ export function AppearanceSettings() {
   const toursEnabled = useStore($toursEnabled)
   const spentTips = useStore($spentTipCount)
   const vibeHeartsEnabled = useStore($vibeHeartsEnabled)
+  const stickyUserMessagesEnabled = useStore($stickyUserMessagesEnabled)
   const backdrop = useStore($backdrop)
   const introSplash = useStore($introSplash)
   const installs = useStore($marketplaceInstalls)
@@ -841,6 +843,24 @@ export function AppearanceSettings() {
           />
 
           <ResumeLastSessionSetting />
+
+          <ListRow
+            action={
+              <SegmentedControl
+                onChange={id => {
+                  triggerHaptic('selection')
+                  setStickyUserMessagesEnabled(id === 'on')
+                }}
+                options={[
+                  { id: 'off', label: t.common.off },
+                  { id: 'on', label: t.common.on }
+                ]}
+                value={stickyUserMessagesEnabled ? 'on' : 'off'}
+              />
+            }
+            description={a.stickyUserMessagesDesc}
+            title={a.stickyUserMessagesTitle}
+          />
 
           <ListRow
             action={
