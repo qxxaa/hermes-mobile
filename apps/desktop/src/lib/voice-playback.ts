@@ -1,6 +1,8 @@
 import { resolveGatewayWsUrl } from '@hermes/shared'
 
+import { isBrowserBridge } from '@/bridge/browser-bridge'
 import { getApiRequestConnection, getApiRequestProfile, speakText } from '@/hermes'
+import { speakWithDeviceTts } from '@/lib/device-tts'
 import {
   cutSentences,
   directTtsConfig,
@@ -667,6 +669,30 @@ export async function playSpeechText(text: string, options: VoicePlaybackOptions
   setVoicePlaybackState(currentState('preparing', options))
 
   try {
+    // Fork (PWA): on-device synthesis first — free, offline, per-sentence
+    // fi/en auto-detect. Falls through to the server ladder when the
+    // Web Speech API is missing.
+    if (isBrowserBridge() && isCurrent()) {
+      const outcome = await speakWithDeviceTts(speakableText, {
+        isCurrent,
+        onSpeaking: () => setVoicePlaybackState(currentState('speaking', options)),
+        registerStop: stop => {
+          currentStop = stop
+        }
+      }).catch((): 'unavailable' => 'unavailable')
+
+      if ((outcome === 'done' || outcome === 'stopped') && isCurrent()) {
+        currentStop = null
+        setVoicePlaybackState(currentState('idle'))
+
+        return true
+      }
+
+      if (!isCurrent()) {
+        return false
+      }
+    }
+
     // Ladder: client-direct synthesis (profile's own TTS, no gateway audio
     // hop) → streaming WS relay → POST data-URL fallback.
     const direct = await directTtsConfig().catch(() => null)
