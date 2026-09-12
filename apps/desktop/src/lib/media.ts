@@ -1,3 +1,4 @@
+import { isBrowserBridge } from '@/bridge/browser-bridge'
 import { readDesktopFileDataUrl } from '@/lib/desktop-fs'
 import { capitalize } from '@/lib/text'
 import { $connection } from '@/store/session'
@@ -93,6 +94,14 @@ export async function resolveMediaDisplaySrc(path: string): Promise<string> {
   return window.hermesDesktop.readFileDataUrl(filePathFromMediaPath(path))
 }
 
+// Fork (PWA): same-origin managed-file URL. The browser sends the gateway
+// session cookie automatically, so no ?token= is needed (unlike Electron,
+// which must smuggle auth into the URL). Relative on purpose: the PWA is
+// always served same-origin with the gateway (dev Vite proxy / prod nginx).
+function gatewaySameOriginFileUrl(route: 'stream' | 'download', path: string): string {
+  return `/api/files/${route}?path=${encodeURIComponent(filePathFromMediaPath(path))}`
+}
+
 // Audio/video need a seekable source instead of a whole-file data URL. Keep
 // remote URLs untouched and route filesystem paths through the Electron media
 // protocol. Its main-process handler reads local files directly or proxies a
@@ -100,6 +109,14 @@ export async function resolveMediaDisplaySrc(path: string): Promise<string> {
 export async function resolveMediaPlaybackSrc(path: string): Promise<string> {
   if (isInlineMediaSrc(path)) {
     return path
+  }
+
+  // Fork (PWA): the browser build has no hermes-media:// protocol handler, so
+  // the Electron branch below yields an unplayable src. Same-origin
+  // /api/files/stream carries the session cookie, supports Range, and plays
+  // inline in <audio>/<video> (verified: 206 + audio/mpeg over cookie auth).
+  if (isBrowserBridge() && isRemoteGateway() && ['audio', 'video'].includes(mediaKind(path))) {
+    return gatewaySameOriginFileUrl('stream', path)
   }
 
   if (window.hermesDesktop && ['audio', 'video'].includes(mediaKind(path))) {
@@ -124,6 +141,14 @@ export function mediaExternalUrl(path: string): string {
       const file = encodeURIComponent(filePathFromMediaPath(path))
 
       return `${conn.baseUrl}/api/files/download?path=${file}&token=${encodeURIComponent(conn.token)}`
+    }
+
+    // Fork (PWA): cookie-authed remotes expose no token to the renderer, so
+    // the file:// fallback below is unopenable. Same-origin download carries
+    // the session cookie and the gateway serves it as an attachment (inline
+    // for audio/video subresources).
+    if (isBrowserBridge()) {
+      return gatewaySameOriginFileUrl('download', path)
     }
   }
 

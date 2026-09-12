@@ -1145,3 +1145,10 @@ export function installBrowserBridge(): void {
   bridgeInstalled = true
   window.hermesDesktop = installedBridge
 }
+
+// Fork (PWA): true once this shim owns window.hermesDesktop. Lets renderer
+// code tell the browser build (same-origin gateway, cookie auth, no
+// hermes-media:// protocol) apart from real Electron without UA sniffing.
+export function isBrowserBridge(): boolean {
+  return bridgeInstalled
+}

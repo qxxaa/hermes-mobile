@@ -107,7 +107,10 @@ function useOpenMediaFile(path: string) {
   const [openFailed, setOpenFailed] = useState(false)
 
   const open = () => {
-    if (window.hermesDesktop && isRemoteGateway()) {
+    // Fork (PWA): the shim omits saveGatewayFile (no Electron main to fetch
+    // gateway bytes), so skip the native-download leg — it would only raise
+    // openFailed. mediaExternalUrl now yields a same-origin download URL.
+    if (window.hermesDesktop?.saveGatewayFile && isRemoteGateway()) {
       setOpenFailed(false)
       void downloadGatewayMediaFile(path).catch(() => setOpenFailed(true))
     } else {

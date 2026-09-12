@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $connection } from '@/store/session'
 
+const pwaState = vi.hoisted(() => ({ value: false }))
+
+vi.mock('@/bridge/browser-bridge', () => ({
+  isBrowserBridge: () => pwaState.value
+}))
+
 import {
   downloadGatewayMediaFile,
   filePathFromMediaPath,
@@ -74,6 +80,20 @@ describe('mediaExternalUrl', () => {
   it('falls back to file:// when remote connection lacks a token', () => {
     $connection.set({ mode: 'remote', baseUrl: 'https://gw' } as never)
     expect(mediaExternalUrl('/tmp/a.png')).toBe('file:///tmp/a.png')
+  })
+
+  it('uses a same-origin download URL on the PWA bridge without a token', () => {
+    pwaState.value = true
+    $connection.set({ mode: 'remote', baseUrl: 'https://gw' } as never)
+    expect(mediaExternalUrl('/tmp/a b.mp3')).toBe('/api/files/download?path=%2Ftmp%2Fa%20b.mp3')
+    pwaState.value = false
+  })
+
+  it('keeps the token download URL on the PWA bridge when a token exists', () => {
+    pwaState.value = true
+    $connection.set({ mode: 'remote', baseUrl: 'https://gw', token: 't' } as never)
+    expect(mediaExternalUrl('/tmp/a.mp3')).toBe('https://gw/api/files/download?path=%2Ftmp%2Fa.mp3&token=t')
+    pwaState.value = false
   })
 })
 
@@ -198,6 +218,40 @@ describe('resolveMediaPlaybackSrc', () => {
 
     await expect(resolveMediaPlaybackSrc('C:\\renders\\demo.mp4')).resolves.toBe(
       'hermes-media://stream/C%3A%5Crenders%5Cdemo.mp4'
+    )
+  })
+})
+
+describe('resolveMediaPlaybackSrc on the PWA bridge', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    $connection.set(null)
+    pwaState.value = false
+  })
+
+  it('streams remote audio/video over same-origin /api/files/stream', async () => {
+    pwaState.value = true
+    vi.stubGlobal('window', { hermesDesktop: { api: vi.fn() } })
+    $connection.set({ authMode: 'oauth', mode: 'remote', profile: 'default', token: null } as never)
+
+    await expect(resolveMediaPlaybackSrc('/opt/data/cache/audio/tts_a b.mp3')).resolves.toBe(
+      '/api/files/stream?path=%2Fopt%2Fdata%2Fcache%2Faudio%2Ftts_a%20b.mp3'
+    )
+    await expect(resolveMediaPlaybackSrc('/root/outputs/render.mp4')).resolves.toBe(
+      '/api/files/stream?path=%2Froot%2Foutputs%2Frender.mp4'
+    )
+    await expect(resolveMediaPlaybackSrc('file:///tmp/a%20b.mp4')).resolves.toBe(
+      '/api/files/stream?path=%2Ftmp%2Fa%20b.mp4'
+    )
+  })
+
+  it('leaves remote HTTPS media untouched on the PWA bridge', async () => {
+    pwaState.value = true
+    vi.stubGlobal('window', { hermesDesktop: { api: vi.fn() } })
+    $connection.set({ authMode: 'oauth', mode: 'remote', profile: 'default', token: null } as never)
+
+    await expect(resolveMediaPlaybackSrc('https://cdn.example.com/render.mp4')).resolves.toBe(
+      'https://cdn.example.com/render.mp4'
     )
   })
 })
