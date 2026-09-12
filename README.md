@@ -39,6 +39,7 @@ filtered out, so they never enter the fork. Details:
 | Area | What works |
 |---|---|
 | Chat | Full conversation surface: sessions, streaming, approvals/clarify/sudo prompts, slash commands, model picker, voice notes (dictation/read-aloud) |
+| Read-aloud | On-device speech via Android system TTS — free, offline, no voice config. Finnish/English auto-detected per sentence; server voices stay as fallback |
 | Sign-in | Cookie login through the same-origin proxy. No setup screen: the app defaults to its own origin and only asks for credentials when the session cookie is missing |
 | Attach | "+" menu uploads files, folders, and images through the gateway. Images outside `png/jpg/jpeg/gif/webp` (HEIC/HEIF/AVIF/BMP/TIFF) are transcoded to JPEG in the browser |
 | Share to Hermes | Android share target: share photos/files/links from any app into Hermes, pick an existing session or a new chat, add a message, and the share lands in the composer as a staged draft — nothing is sent until you press Send |
