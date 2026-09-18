@@ -319,6 +319,10 @@ type Listener = () => void
 
 const connectionAppliedListeners = new Set<Listener>()
 
+type DefaultProfileListener = (route: { connectionId: null | string; profile: string } | null) => void
+
+const defaultProfileListeners = new Set<DefaultProfileListener>()
+
 function emitConnectionApplied() {
   for (const listener of [...connectionAppliedListeners]) {
     try {
@@ -956,6 +960,47 @@ const shim = {
   openWindow: async () => ({ error: 'Multiple windows are not available in the browser build.', ok: false }),
   probeConnectionConfig,
   profile: {
+    // Default profile route (upstream Electron persists it in main). Single-
+    // connection PWA: backed by localStorage with connectionId null; the
+    // startup-profile key below is a separate concern (last-used vs default).
+    getDefault: async () => {
+      try {
+        const raw = localStorage.getItem('hermes.mobile.default-profile-route')
+
+        if (!raw) {
+          return null
+        }
+
+        const route = JSON.parse(raw) as { connectionId?: unknown; profile?: unknown }
+
+        return typeof route.profile === 'string' && route.profile ? { connectionId: null, profile: route.profile } : null
+      } catch {
+        return null
+      }
+    },
+    setDefault: async route => {
+      if (!route?.profile) {
+        throw new Error('Cannot save a default profile without a profile.')
+      }
+
+      const next = { connectionId: null as null | string, profile: route.profile }
+      localStorage.setItem('hermes.mobile.default-profile-route', JSON.stringify(next))
+
+      for (const cb of [...defaultProfileListeners]) {
+        try {
+          cb(next)
+        } catch {
+          // one bad listener must not break the rest
+        }
+      }
+
+      return next
+    },
+    onDefaultChanged: callback => {
+      defaultProfileListeners.add(callback)
+
+      return () => void defaultProfileListeners.delete(callback)
+    },
     get: async () => ({ profile: localStorage.getItem('hermes.mobile.active-profile') ?? null }),
     // Persist the chosen startup profile so the next boot lands on it
     // (#79886 semantics, via localStorage instead of Electron IPC).

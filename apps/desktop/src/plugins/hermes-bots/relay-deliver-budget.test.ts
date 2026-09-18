@@ -28,6 +28,13 @@ function tsConstant(name: string): number {
   return Number(match![1].replaceAll('_', ''))
 }
 
+function pyConstant(name: string): number {
+  const match = relayHandler.match(new RegExp(`^${name}\\s*=\\s*(\\d+)`, 'm'))
+  expect(match, `${name} must exist as a literal in tui_gateway/methods_bot_relay.py`).toBeTruthy()
+
+  return Number(match![1])
+}
+
 describe('bot_relay.deliver budget mirrors', () => {
   it.runIf(backendSourcesPresent)('mirrors the backend turn-lock default', () => {
     const lockWaitMatch = configDefaults.match(/"turn_wait_seconds":\s*(\d+)/)
@@ -39,13 +46,15 @@ describe('bot_relay.deliver budget mirrors', () => {
   it.runIf(backendSourcesPresent)('mirrors the backend per-attempt turn timeout', () => {
     // The backend names both numbers explicitly (methods_bot_relay.py) so the mirror is a
     // constant-to-constant check, not a count of textual subprocess.run(...) call sites.
-    const attemptTimeout = relayHandler.match(/^TURN_ATTEMPT_TIMEOUT_SECONDS\s*=\s*(\d+)/m)
-    const maxAttempts = relayHandler.match(/^TURN_MAX_ATTEMPTS\s*=\s*(\d+)/m)
+    expect(tsConstant('RELAY_TURN_ATTEMPT_MS')).toBe(pyConstant('TURN_ATTEMPT_TIMEOUT_SECONDS') * 1000)
+    expect(tsConstant('RELAY_TURN_MAX_ATTEMPTS')).toBe(pyConstant('TURN_MAX_ATTEMPTS'))
+  })
 
-    expect(attemptTimeout, 'TURN_ATTEMPT_TIMEOUT_SECONDS must exist in methods_bot_relay.py').toBeTruthy()
-    expect(maxAttempts, 'TURN_MAX_ATTEMPTS must exist in methods_bot_relay.py').toBeTruthy()
-    expect(tsConstant('RELAY_TURN_ATTEMPT_MS')).toBe(Number(attemptTimeout![1]) * 1000)
-    expect(tsConstant('RELAY_TURN_MAX_ATTEMPTS')).toBe(Number(maxAttempts![1]))
+  it.runIf(backendSourcesPresent)('shares its settlement margin with the sender-side waiter budget', () => {
+    // tests/tools/test_bot_relay.py checks that REPLY_WAIT_SECONDS exceeds the rebuilt sum.
+    expect(tsConstant('RELAY_DELIVER_SETTLEMENT_MARGIN_MS')).toBe(
+      pyConstant('DESKTOP_DELIVER_SETTLEMENT_MARGIN_SECONDS') * 1000
+    )
   })
 
   it('keeps the client deadline strictly greater than the backend ceiling', () => {

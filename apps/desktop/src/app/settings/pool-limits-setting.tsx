@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { ListRow } from '@/app/settings/primitives'
 import { hasDesktopFeature } from '@/bridge/capabilities'
 import { Input } from '@/components/ui/input'
+import { useI18n } from '@/i18n'
 import { $poolLimits, loadPoolLimits, savePoolLimits } from '@/store/pool-limits'
 
 // Fork note: upstream imports these bounds from '../../../electron/pool-limits'
@@ -30,6 +31,7 @@ export function PoolLimitsSetting() {
 }
 
 function PoolLimitsSettingRows() {
+  const { t } = useI18n()
   const limits = useStore($poolLimits)
   const [maxDraft, setMaxDraft] = useState(String(limits.maxBackends))
   const [idleDraft, setIdleDraft] = useState(String(limits.idleMs))
@@ -77,7 +79,7 @@ function PoolLimitsSettingRows() {
         action={
           <div className="flex items-center gap-2">
             <Input
-              aria-label="Warm bot backends"
+              aria-label={t.settings.poolLimits.warmBotBackendsAria}
               className="w-20"
               inputMode="numeric"
               max={MAX_BACKENDS_MAX}
@@ -95,13 +97,13 @@ function PoolLimitsSettingRows() {
           </div>
         }
         description="How many bot backends stay running for instant switching. Higher = faster switches, more memory (~60MB per backend). Applies immediately."
-        title="Warm Bot Backends"
+        title={t.settings.poolLimits.warmBotBackendsTitle}
       />
       <ListRow
         action={
           <div className="flex items-center gap-2">
             <Input
-              aria-label="Backend idle timeout in milliseconds"
+              aria-label={t.settings.poolLimits.backendIdleTimeoutAria}
               className="w-28"
               inputMode="numeric"
               max={IDLE_MS_MAX}
@@ -120,7 +122,7 @@ function PoolLimitsSettingRows() {
           </div>
         }
         description="How long an unused bot backend stays warm before it is shut down. Raise this so bots you revisit every few minutes never pay a cold start."
-        title="Backend Idle Timeout"
+        title={t.settings.poolLimits.backendIdleTimeoutTitle}
       />
     </>
   )

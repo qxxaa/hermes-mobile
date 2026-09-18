@@ -1,8 +1,8 @@
+import { compactNumber } from '@hermes/shared'
 import { useState } from 'react'
 
 import { StableText } from '@/components/chat/stable-text'
 import { useViewedInterval } from '@/hooks/use-viewed-interval'
-import { compactNumber } from '@/lib/format'
 import type { UsageStats } from '@/types/hermes'
 
 export function formatDuration(elapsedMs: number): string {
@@ -43,7 +43,7 @@ export function contextBar(percent: number | undefined, width = 10): string {
 
 export function usageContextLabel(usage: UsageStats): string {
   if (usage.context_max) {
-    return `${compactNumber(usage.context_used ?? 0)}/${compactNumber(usage.context_max)}`
+    return `${usage.context_estimated ? '~' : ''}${compactNumber(usage.context_used ?? 0)}/${compactNumber(usage.context_max)}`
   }
 
   return usage.total > 0 ? `${compactNumber(usage.total)} tok` : ''
@@ -56,7 +56,7 @@ export function contextBarLabel(usage: UsageStats): string {
 
   const pct = Math.max(0, Math.min(100, Math.round(usage.context_percent ?? 0)))
 
-  return `[${contextBar(usage.context_percent)}] ${pct}%`
+  return `[${contextBar(usage.context_percent)}] ${usage.context_estimated ? '~' : ''}${pct}%`
 }
 
 /** `87%` for a reported hit rate; '' when the backend omitted it (no cache
@@ -74,7 +74,6 @@ export function tokensPerSecondLabel(usage: UsageStats): string {
 
   return typeof tps === 'number' && Number.isFinite(tps) && tps > 0 ? `${Math.round(tps)} t/s` : ''
 }
-
 export function LiveDuration({ since }: { since: number | null | undefined }) {
   const [now, setNow] = useState(() => Date.now())
 
