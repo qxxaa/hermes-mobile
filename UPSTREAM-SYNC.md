@@ -491,6 +491,31 @@ delta disappears and the fork shrinks toward "deploy config + PWA shell".
   `fileAttachFailed` (strict parity); shim `saveImageBuffer` takes upstream's
   `name`. Deps: no drift (root + desktop deps/overrides unchanged; engines
   widened both manifests). Tests: model-menu-panel count 2→3 (mount query +
-  mount effect + manual refresh); relay-deliver-budget backend-mirror tests
-  `runIf`'d (hermes_cli/tui_gateway absent here). 723 files / 7240 tests
-  (2 skipped). Phone test: PENDING (user deploy).
+ mount effect + manual refresh); relay-deliver-budget backend-mirror tests
+ `runIf`'d (hermes_cli/tui_gateway absent here). 723 files / 7240 tests
+ (2 skipped). Phone test: PENDING (user deploy).
+ - **Fifth sync (2026-09-18)**: split `b5b8cad7` (~3.1k split commits since
+ Sep 5 — v7 server→client approval bridge, model-menu controller
+ extraction, screenshot bridge member, strip-visibility rework, hub-picker
+ move, telegram QR setup). Split lineage RE-HASHED again (unpinned uvx
+ filter-repo drifted, same as Aug 27) — verified benign by TREE MATCH
+ (`f2e956ba` tree found verbatim at `e37edc11` = TM). Merge base rolled back
+ to `3dfd530e`, so the surface inflated: 203 `UU` + 101 `AA` + 1 `DU`
+ (`stage-native-deps.test.mjs`, keep deleted) + 3 `UD`. Resolved: 267
+ pure-upstream via tree-match classify + take-theirs; ~20 fork files via
+ `checkout --theirs` + `git apply --3way` of the `TM..HEAD` delta; 23 manual
+ (package.json, model-menu controller port, wiring union, titlebar flip
+ gate, narrow-overlays solo+revealable union, i18n unions, global.d.ts
+ ScreenshotApi/HermesNotification snapshots, PWA profile-route trio,
+ AppContextMenu migration, UD deletions accepted for plugins-settings +
+ embedded-hub-picker (superseded, zero refs), keybind late-actions test
+ removed (page is stripped)). Fixes found by verification, not the merge:
+ `qrcode` re-added to deps (upstream's new telegram QR setup needs it —
+ blanket-drop was wrong), three both-sides-added dup blocks deduped
+ (statusbar labels, windows popout, config record), hideOnly rung
+ re-added to reworked `stranded()`, model-menu test counts 2→3 (mount now
+ reads query + auto-refresh), sidebar test 4th arg, relay settlement test
+ `runIf`'d. Deps: overrides identical to upstream tip; only expected
+ `file:../shared`. Stripped-paths assertion clean, no junk. Typecheck clean;
+ build green (~39 s); 896 files / 8292 tests pass (3 skipped). Phone test:
+ PENDING (user deploy).
