@@ -15,8 +15,8 @@ Five files, five roles. Keep them that way — no cross-loading:
   invariants, seams, verification, deploy, and the essentials of each
   process, pointing to the authoritative doc.
 - **UPSTREAM-SYNC.md** — *the sync, authoritatively.* Mechanism, exact
-  commands, filter inventory, conflict surface, decision rules, watcher
-  spec, per-sync records. May point at a ROADMAP item ("→ ROADMAP #10");
+  commands, filter inventory, conflict surface, decision rules, per-sync
+  records. May point at a ROADMAP item ("→ ROADMAP #10");
   carries no roadmap content.
 - **ROADMAP.md** — *what's shipped / what's planned.* Done and Next with
   explicit out-of-scope. No procedure.
@@ -175,7 +175,7 @@ endpoint). Remaining work (review writes, worktrees) is tracked in
 
 The fork tracks upstream Hermes Desktop via **throttled merges at release
 boundaries** — not per-commit. The full procedure, measured numbers, fork
-inventory, and watcher spec live in [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md);
+inventory, and decision rules live in [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md);
 read it before touching anything upstream-related. Essentials:
 
 - **Never merge `upstream/main` directly** — that is the full monorepo; a raw

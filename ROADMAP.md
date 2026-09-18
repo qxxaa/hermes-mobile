@@ -67,9 +67,8 @@ The read side works (edited files clickable, diffs render). Write side:
 
 ### 9. Upstream sync routine
 
-- Weekly contract-diff watcher (cron) — procedure and spec in
-  `UPSTREAM-SYNC.md`; first throttled merge + filter transition done
-  2026-08-16
+- Throttled merges at release boundaries; first merge + filter transition
+  done 2026-08-16
 
 ### 10. Skills hub mobile layout
 

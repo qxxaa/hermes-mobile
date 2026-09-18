@@ -7,8 +7,8 @@ feature later never becomes a full re-port.
 
 The alternative models were considered and rejected: continuous per-commit merge
 (upstream moves ~38 desktop commits/day — pure churn), and watch-only selective
-porting (divergence grows until a port IS a re-port). The watcher below decides
-*when* a sync is due; the split-merge procedure below is *how* it runs.
+porting (divergence grows until a port IS a re-port). Sync timing follows the
+decision rules below; the split-merge procedure below is *how* it runs.
 
 ## The containment problem (measured 2026-08-15)
 
@@ -395,22 +395,6 @@ dependency-drift signal (check 3b) — stop and decide, don't merge blindly.
 Skipping cycles is safe; skipping **months** is what makes the next sync a
 re-port. Floor cadence: every 2–4 weeks, or at each desktop release, whichever
 comes first.
-
-## Watcher (planned — cron, weekly)
-
-Not yet created (2026-08-15). Spec:
-
-1. Rebuild the split scratch fresh (the sync procedure's step 1), then report:
-   - `git log --oneline <last-sync-sha>..upstream-desktop | wc -l` + touch
-     counts per file in the conflict surface (the table above)
-   - contract diff: `git diff <last-sync-sha> upstream-desktop -- apps/desktop/src/global.d.ts apps/shared` → list new/removed bridge members (the porting checklist)
-   - **dependency drift (before any sync, so the split can be adjusted)**: diff
-     upstream root `package.json` (overrides/workspaces/engines/allowScripts)
-     vs ours; scan upstream `apps/desktop` + `apps/shared` manifests for
-     `file:`/`workspace:` refs pointing outside the split paths
-2. Desktop releases scan (GitHub) for notable renderer features.
-3. Agent releases scan for gateway REST endpoint changes (the urgent trigger).
-4. Deliver a 30-second drift report → user decides sync / skip.
 
 ## Long-term exit ramp
 
