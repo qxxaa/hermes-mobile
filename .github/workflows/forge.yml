@@ -1,0 +1,196 @@
+name: Forge Hermes Mobile
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      tag: ${{ steps.meta.outputs.tag }}
+      revision: ${{ github.sha }}
+      run_number: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 26.8.1
+          cache: npm
+
+      - name: Install exact npm
+        run: npm install --global npm@11.17.0 && test "$(npm --version)" = 11.17.0
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck -w apps/desktop
+
+      - name: Composer suite
+        run: npm run test -w apps/desktop -- src/app/chat/composer --maxWorkers=2
+
+      - name: Container helper tests
+        run: node --test tests/container/*.test.mjs
+
+      - name: Gateway URL validation tests
+        run: tests/container/validate-gateway-url.test.sh
+
+      - name: Production build
+        run: GITHUB_SHA=${{ github.sha }} GITHUB_REF_NAME=${{ github.ref_name }} npm run build -w apps/desktop
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Name the immutable candidate
+        id: meta
+        run: |
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tag="$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          printf 'image=%s\n' "$repository" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build the exact candidate image
+        run: |
+          docker buildx build --load --platform linux/amd64 \
+            --build-arg SOURCE_REVISION="${GITHUB_SHA}" \
+            --build-arg SOURCE_BRANCH="${GITHUB_REF_NAME}" \
+            --label "io.github.hermes-mobile.run-number=${GITHUB_RUN_NUMBER}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --tag "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}" .
+
+      - name: Smoke test the exact candidate
+        run: tests/container/run-smoke.sh "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}"
+
+      - name: Export the tested candidate without rebuilding it
+        if: github.event_name == 'push'
+        run: docker save "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}" -o /tmp/hermes-mobile-candidate.tar
+
+      - name: Transfer the tested candidate to publishing
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hermes-mobile-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/hermes-mobile-candidate.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: validate
+    if: github.event_name == 'push' && needs.validate.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ needs.validate.outputs.image }}
+      tag: ${{ needs.validate.outputs.tag }}
+      digest: ${{ steps.push.outputs.digest }}
+      revision: ${{ needs.validate.outputs.revision }}
+      run_number: ${{ needs.validate.outputs.run_number }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: hermes-mobile-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Load the exact tested candidate
+        run: docker load -i /tmp/hermes-mobile-candidate.tar
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push the tested immutable candidate
+        id: push
+        run: |
+          docker push "${{ needs.validate.outputs.image }}:${{ needs.validate.outputs.tag }}"
+          manifest="$(docker buildx imagetools inspect "${{ needs.validate.outputs.image }}:${{ needs.validate.outputs.tag }}" --format '{{json .Manifest}}')"
+          digest="$(printf '%s' "$manifest" | jq -er '.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))')"
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          {
+            printf '### Hermes Mobile immutable candidate\n\n'
+            printf -- '- Image: `%s@%s`\n' "${{ needs.validate.outputs.image }}" "$digest"
+            printf -- '- Tag: `%s`\n' "${{ needs.validate.outputs.tag }}"
+            printf -- '- Revision: `%s`\n' "${{ github.sha }}"
+            printf -- '- Run: %s\n' "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  promote-latest:
+    needs: publish
+    if: github.event_name == 'push' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: hermes-mobile-latest
+      queue: max
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Inspect and monotonically promote latest
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+          CANDIDATE_DIGEST: ${{ needs.publish.outputs.digest }}
+          CANDIDATE_RUN_NUMBER: ${{ needs.publish.outputs.run_number }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          latest_state="$(node scripts/container/lookup-latest.mjs)"
+          if [ "$latest_state" = found ]; then
+            docker pull "$IMAGE:latest"
+            latest_label="$(docker image inspect "$IMAGE:latest" --format '{{ index .Config.Labels "io.github.hermes-mobile.run-number" }}')"
+            case "$latest_label" in [1-9]* ) latest_run_number=$latest_label ;; *) printf '%s\n' 'latest image lacks a valid run-number label' >&2; exit 1 ;; esac
+          elif [ "$latest_state" = missing ]; then
+            latest_run_number=''
+          else
+            printf '%s\n' 'latest manifest classifier returned an unsupported state' >&2
+            exit 1
+          fi
+          set +e
+          node scripts/container/decide-latest.mjs "$CANDIDATE_RUN_NUMBER" "$latest_state" "$latest_run_number"
+          decision=$?
+          set -e
+          if [ "$decision" -eq 10 ]; then
+            printf '%s\n' 'latest remains newer or equal; no retag performed' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          [ "$decision" -eq 0 ] || exit "$decision"
+          docker buildx imagetools create --prefer-index=false --tag "$IMAGE:latest" "$IMAGE@$CANDIDATE_DIGEST"
+          promoted_manifest="$(docker buildx imagetools inspect "$IMAGE:latest" --format '{{json .Manifest}}')"
+          promoted_digest="$(printf '%s' "$promoted_manifest" | jq -er '.digest | select(type == "string" and test("^sha256:[0-9a-f]{64}$"))')"
+          test "$promoted_digest" = "$CANDIDATE_DIGEST"
+          {
+            printf '### Hermes Mobile latest promotion\n\n'
+            printf -- '- Promoted exact digest: `%s`\n' "$promoted_digest"
+            printf -- '- Candidate run number: `%s`\n' "$CANDIDATE_RUN_NUMBER"
+          } >> "$GITHUB_STEP_SUMMARY"
