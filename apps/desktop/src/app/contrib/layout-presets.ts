@@ -75,6 +75,19 @@ const TERMINAL_TREE = split(
   [3, 1]
 )
 
+// Terminal deck places the tooling without opening it: the terminal rests as
+// its bottom rail and files/review as a closed right column, so ⌃` and ⌘J open
+// each one in its deck slot. Review rests with files: closing the file tree
+// collapses their shared column, and an open review there would leave ⌘G
+// reading open while nothing shows.
+const TERMINAL_RESTING = ['terminal', 'files', 'review'] as const
+
+// The first-run intro's borrowed layout: the chat alone, no tab strip. Unlisted,
+// and applied while layout persistence is held (onboarding-chat/assembly.ts).
+export const DEMO_LAYOUT_ID = 'demo'
+
+export const DEMO_TREE = group(['workspace'], { tabStrip: 'never' })
+
 const QUAD_TREE = split(
   'column',
   [
@@ -110,7 +123,15 @@ export function registerLayoutPresets() {
     { id: 'default', title: 'Default', order: 0, tree: availableLayout(DEFAULT_TREE), tier: 'advanced' },
     { id: 'basic', title: 'Basic', order: 5, tree: availableLayout(BASIC_TREE), resting: availableResting(BASIC_RESTING), tier: 'advanced' },
     { id: 'focus', title: 'Focus', order: 10, tree: availableLayout(FOCUS_TREE), resting: availableResting(['terminal']), tier: 'advanced' },
-    { id: 'terminal-deck', title: 'Terminal deck', order: 20, tree: availableLayout(TERMINAL_TREE), tier: 'advanced' },
-    { id: 'quad', title: 'Quad', order: 30, tree: availableLayout(QUAD_TREE), tier: 'advanced' }
+    {
+      id: 'terminal-deck',
+      title: 'Terminal deck',
+      order: 20,
+      tree: availableLayout(TERMINAL_TREE),
+      resting: availableResting(TERMINAL_RESTING),
+      tier: 'advanced'
+    },
+    { id: 'quad', title: 'Quad', order: 30, tree: availableLayout(QUAD_TREE), tier: 'advanced' },
+    { id: DEMO_LAYOUT_ID, listed: false, title: 'Demo', order: 40, tree: availableLayout(DEMO_TREE) }
   ])
 }

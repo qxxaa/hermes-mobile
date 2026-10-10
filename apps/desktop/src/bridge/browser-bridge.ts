@@ -30,7 +30,8 @@ import type {
   HermesApiRequest,
   HermesConnection,
   HermesNotification,
-  HermesReadDirResult
+  HermesReadDirResult,
+  KeepAwakeMode
 } from '@/global'
 import { readJson, writeJson } from '@/lib/storage'
 
@@ -727,7 +728,12 @@ async function requestMicrophoneAccess(): Promise<boolean> {
 
 let wakeLockSentinel: { release: () => Promise<void> } | null = null
 
-async function setKeepAwake(on: boolean): Promise<void> {
+// Fork (PWA): the bridge's keep-awake modes map onto the Screen Wake Lock —
+// 'off' releases it, 'always' and 'while-working' hold it (the PWA has no
+// background turn picture to scope 'while-working' precisely).
+async function setKeepAwake(mode: KeepAwakeMode): Promise<void> {
+  const on = mode !== 'off'
+
   if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) {
     return
   }
