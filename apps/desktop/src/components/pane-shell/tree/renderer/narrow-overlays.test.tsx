@@ -186,3 +186,51 @@ describe('narrow overlay of a stacked zone', () => {
     )
   })
 })
+
+describe('narrow edge strips on coarse pointers', () => {
+  // Fork (PWA): the full-height LEFT strip spans the composer's attach
+  // button's column (44px of the left edge, bottom of the screen included),
+  // so a tap meant for "+" summoned the sessions drawer. Coarse pointers get
+  // no left strip; the drawer opens from the titlebar's Show sidebar button
+  // (bindTreeSideVisibility routes it here as PANE_TOGGLE_REVEAL_EVENT).
+  const originalMatchMedia = window.matchMedia
+
+  const setCoarse = (coarse: boolean) => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        addEventListener: vi.fn(),
+        matches: coarse && query === '(pointer: coarse)',
+        media: query,
+        removeEventListener: vi.fn()
+      }))
+    })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+  })
+
+  it('suppresses the left edge strip so composer taps reach the attach control', () => {
+    setCoarse(true)
+
+    const { container, getByTestId, queryByTestId } = render(<NarrowOverlays />)
+
+    expect(container.querySelector('[data-narrow-overlay-edge="left"]')).toBeNull()
+    // The right edge keeps both its strip and its touch target.
+    expect(container.querySelector('[data-narrow-overlay-edge="right"]')).toBeTruthy()
+
+    // The titlebar path still opens the sessions drawer on coarse pointers.
+    revealPane('sessions')
+    expect(getByTestId('sessions-body')).toBeTruthy()
+    expect(queryByTestId('files-body')).toBeNull()
+  })
+
+  it('keeps the left hover strip on fine pointers', () => {
+    setCoarse(false)
+
+    const { container } = render(<NarrowOverlays />)
+
+    expect(container.querySelector('[data-narrow-overlay-edge="left"]')).toBeTruthy()
+  })
+})

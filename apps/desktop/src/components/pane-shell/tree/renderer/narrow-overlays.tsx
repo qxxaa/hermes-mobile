@@ -13,6 +13,7 @@ import { PaneTab, PaneTabLabel, PaneTabStrip } from '@/components/ui/pane-tab'
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import type { Contribution } from '@/contrib/types'
+import { matchesQuery } from '@/hooks/use-media-query'
 import { ESCAPE_PRIORITY, isTopEscapeLayer, pushEscapeLayer } from '@/lib/escape-layers'
 import { cn } from '@/lib/utils'
 import { $chatOnboardingSolo } from '@/store/onboarding-intro'
@@ -162,7 +163,13 @@ export function NarrowOverlays() {
 
   const sideOf = (c: Contribution) => (paneChrome(c).placement === 'left' ? 'left' : 'right')
   const revealed = reveal ? revealable.find(p => p.id === reveal.id) : undefined
-  const sides = [...new Set(collapsibles.map(sideOf))]
+  // Fork (PWA): no LEFT edge strip on coarse pointers. It spans the composer's
+  // attach button's column (44px of the left edge, full height), so a tap
+  // meant for "+" summoned the sessions drawer. The drawer opens from the
+  // titlebar's Show sidebar toggle instead (bindTreeSideVisibility routes it
+  // here as PANE_TOGGLE_REVEAL_EVENT); the right edge keeps its strip.
+  const coarsePointer = matchesQuery('(pointer: coarse)')
+  const sides = [...new Set(collapsibles.map(sideOf))].filter(side => side !== 'left' || !coarsePointer)
 
   // Size the overlay the way the pane's zone is sized while docked: declared
   // width refined by the user's drag override (fixedTrackSize), so a pane the
