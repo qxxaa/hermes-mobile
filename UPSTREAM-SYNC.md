@@ -343,14 +343,16 @@ Resolve, in order:
 
 ## Merge-resolution pitfalls (accumulated; hit 2026-09-28 sixth sync unless noted)
 
-- **Pin `git-filter-repo`.** Unpinned `uvx git-filter-repo` drifted twice
-  (Aug 27, Sep 18) and again for this sync: identical args + identical input
-  no longer hash identically, the whole split lineage re-hashes, the
-  continuity check fails, and (this time) even the tree-match fallback failed
-  — not from real divergence but from a one-file filter delta
-  (`stage-native-deps.test.mjs` now excluded, previously included). Until the
-  invocation is pinned (`uvx git-filter-repo@<version>`, version recorded
-  here), EXPECT every sync to need the explicit-base path below.
+- **Pin `git-filter-repo` — DONE (2026-10-09): use
+  `uvx --from git-filter-repo==2.47.0`.** Unpinned `uvx git-filter-repo` had
+  drifted four times in a row (Aug 27, Sep 18, Sep 28, Oct 9): identical args
+  + identical input no longer hash identically, the whole split lineage
+  re-hashes, and the continuity check fails. The tree-match fallback can also
+  fail without real divergence — only the filter's own delta (a
+  newly-excluded file). Three re-hash cases are now fully understood and
+  benign when verified (tree diff against the counterpart = exactly the
+  filter delta); keep the pin and the recorded pass-2 lists, and EXPECT the
+  explicit-base path below whenever the filter config changes.
 - **Explicit-base merge inflates UU.** When `git merge` refuses (unrelated
   histories after a re-hash), merging via explicit-base `read-tree -m OLD
   HEAD TIP` stages every both-changed file as `UU` (73 this sync) instead of
@@ -728,3 +730,65 @@ re-root graft preserves upstream split history.
   they do not make the current PWA fixes obsolete before that sync lands.
   Upstream's timeline-hide preference is user-controlled and is not equivalent
   to this fork's automatic coarse-pointer edge-overlap suppression.
+- **Seventh sync (2026-10-09):** split `c138882e4c` (Oct 9 TIP; **1,164
+  desktop / 67 shared / 288 gateway commits** since the sixth sync — onboarding
+  rework, free-tier surface, shared-metrics RPCs, STT streaming, model-picker
+  upgrades, plugin settings hub, layered i18n language packs (#126296),
+  review diff-scope selector, keep-awake modes). **git-filter-repo is now
+  pinned: `uvx --from git-filter-repo==2.47.0`** — the pin and the pass-2
+  lists are recorded (see the pitfalls above); reuse them every sync. Pass 2
+  gained **61 exclusions** (the inert packaging/signing scripts the sixth
+  sync leaked in: after-extract/after-pack*, audit-bundle-arch, batch-sign,
+  backend-ready, build.mjs, check-*update.py, cli-launchers.test, commit-*,
+  dmgbuild-*, gen-msix, mac-sign, msix-*, native-quad, osx-sign-inputs.test,
+  payload-*, prepare-*, prepared-*, probe-prepared, run-electron-builder.test,
+  sanitize-pe, side-by-side*, sign-*, signing-resources.test,
+  store-package-version.test, update-relaunch-waiter.ps1,
+  verify-signed-payloads.ps1, verify-side-by-side-macos, windows-bundle-tools,
+  bundle-electron-main.test.mjs — kept: bundle-env.*,
+  click-session-helpers.*, macos-sysroot.*, imported by kept code), so the
+  re-hash was EXPECTED and verified benign: `git diff <counterpart> <old
+  split head>` = exactly those 61 files, nothing else. Merge: no common base
+  → explicit-base `read-tree -m 63740f45` (base = old split head): 1,334
+  staged (425 A / 699 M / 151 UD / 2 DU / 57 UU). 150 UD bulk-deleted
+  (fork-untouched — mostly upstream asset/msix-logo moves), 2 DU
+  keep-deleted (`before-pack.test.mjs`, `keybind-settings.late-actions.
+  test.tsx`), 42 UU merge-file-clean, 15 manual. Manual resolutions:
+  package.json (fork scripts + upstream's new `i18n:keys` script +
+  `lucide-react` dep — upstream now declares it), product-identity.cjs (stub
+  re-applied on the new channel-identity logic), layout-presets
+  (availableLayout/availableResting on the new TERMINAL_RESTING + DEMO
+  presets), controller.tsx (keybinds + layout.editMode doors removed —
+  upstream had re-extracted them; Butterbar/TermsButterbar taken; terminal
+  gating and h-dvh/safe-area work kept), wiring.tsx (ShareIntakeDialog +
+  UpdateHoldOverlay union; `useOpenKeybindsListener` call dropped — nothing
+  dispatches the event), use-session-actions (fork reconcile calls kept +
+  import union), settings/index (keybinds stripped from enum/SUBPAGE_VIEWS),
+  global.d.ts (ALL electron types snapshotted — new: ChallengeOutcome,
+  MachineProfile, KeepAwakeMode, UpdateHoldWire, UpdateRunReport,
+  WindowSizeMode; `MachineProfile` had been a dangling alias — now defined;
+  GrowRequest dropped, upstream retired it), i18n ar/zh-hant (upstream split
+  both into layered packs — fork keys re-expressed as inline overrides:
+  `share` block + `statusStack.coding.noDiffFolder` + `desktop.
+  fileAttachFailed` spreads; ru gained noDiffFolder), review.ts (fork's
+  untracked 6th arg kept on the new scope-aware call), test files (media.
+  remote union of PWA + upstream escaping tests; review.test arg
+  expectations + import union; subagents.test import union; vitest.config
+  env NODE_ENV=development + sharedTimeouts + globalSetup vitest.run-tmp.ts),
+  setup.tsx accepted upstream deletion (old onboarding chain; fork's only
+  delta was icon routing). Fixes found by VERIFICATION, not the merge:
+  browser-bridge `setKeepAwake` re-typed to KeepAwakeMode (Screen Wake Lock
+  mapping), NEW upstream `store/keep-awake.ts` imported the stripped electron
+  path → parser inlined + type via @/global, voice-playback device-TTS block
+  re-expressed onto upstream's `liveStops` set (#91991 — the refactor
+  orphaned the fork's `currentStop` slot), i18n overlay-gaps.json regenerated
+  (+13 entries: fork keys → de/es/fr; ar/ja/ru/zh/zh-hant carry them), repo-
+  root fixture `tests/fixtures/identifier_speech_corpus.json` vendored (new
+  upstream test imports it; outside the split), `scripts/classify-node-tests.
+  py` re-run for the new `.test.ts` files (33 files' "window/document is not
+  defined" fixed wholesale). Deps: root `@electron/osx-sign` override ported;
+  parity check — upstream-only deps are exactly the electron strips +
+  node-pty. Gates: typecheck clean; eslint 0 errors (warnings baseline);
+  build green (~48 s); vitest 1,222 files / 10,828 tests pass (3 skipped), 0 failures (~21 min run).
+  Phone result recorded for this sync: PENDING (user deploy; not a current
+  deployment claim).
