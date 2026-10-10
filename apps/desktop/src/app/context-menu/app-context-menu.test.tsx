@@ -19,6 +19,13 @@ import {
 } from './store'
 import { resolveDomTarget } from './target'
 
+const pwaState = vi.hoisted(() => ({ value: false }))
+
+vi.mock('@/bridge/browser-bridge', async importOriginal => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  isBrowserBridge: () => pwaState.value
+}))
+
 const desktopWindow = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
 
 function installBridge(partial: Partial<Window['hermesDesktop']> = {}) {
@@ -49,6 +56,7 @@ function attach(html: string): HTMLElement {
 afterEach(() => {
   $contextMenu.set(null)
   $connection.set(null)
+  pwaState.value = false
   closeRightRail()
   cleanup()
   vi.restoreAllMocks()
@@ -418,6 +426,38 @@ describe('AppContextMenu', () => {
     fireEvent.contextMenu(host.querySelector('span')!)
 
     expect($contextMenu.get()).toBeNull()
+  })
+
+  // Fork (PWA): the browser shim omits contextMenuEdit, so the custom edit
+  // menu is dead items over a gesture the OS needs for its native copy/paste
+  // callout. Editables keep the native menu; everything else is untouched.
+  it('PWA: leaves editables alone for the native copy/paste menu', () => {
+    pwaState.value = true
+    installBridge()
+    mountMenu()
+    // Note: contenteditable hosts are covered by the same early return in
+    // production, but jsdom does not implement isContentEditable, so only
+    // form fields are assertable here.
+    const host = attach('<textarea>draft text</textarea><input type="text" value="hello">')
+
+    fireEvent.contextMenu(host.querySelector('textarea')!)
+    expect($contextMenu.get()).toBeNull()
+    expect(screen.queryByText('Paste')).toBeNull()
+
+    fireEvent.contextMenu(host.querySelector('input')!)
+    expect($contextMenu.get()).toBeNull()
+    expect(screen.queryByText('Paste')).toBeNull()
+  })
+
+  it('PWA: still opens the app menu for non-editable targets', async () => {
+    pwaState.value = true
+    installBridge()
+    mountMenu()
+    const host = attach('<a href="https://example.com/docs">Docs</a>')
+
+    fireEvent.contextMenu(host.querySelector('a')!)
+
+    expect(await screen.findByText('Copy URL')).toBeTruthy()
   })
 
   it('shows the terminal menu through a registered handle', async () => {

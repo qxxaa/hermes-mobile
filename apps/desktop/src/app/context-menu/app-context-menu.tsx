@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 
 import { terminalMenuHandleFor } from '@/app/right-sidebar/terminal/terminal-context-menu'
 import { openStarMapNodeMenuFor } from '@/app/starmap/context-menu-handle'
+import { isBrowserBridge } from '@/bridge/browser-bridge'
 import { DROPDOWN_KIT } from '@/components/ui/actions-menu'
 import { Codicon } from '@/components/ui/codicon'
 import { HERMES_CONTEXT_MENU_TRIGGER_ATTR } from '@/components/ui/context-menu'
@@ -581,6 +582,17 @@ export function AppContextMenu() {
       }
 
       const target = resolveDomTarget(element)
+
+      // Fork (PWA): editables keep the native menu. The app edit verbs run
+      // through window.hermesDesktop?.contextMenuEdit, which the browser shim
+      // omits — so the custom menu's Cut/Copy/Paste are dead items that swallow
+      // the long-press/right-click gesture the platform would have turned into
+      // its native copy/paste callout (pasting a link into the composer). Leave
+      // the gesture alone so the OS handles it.
+      if (isBrowserBridge() && target.editable) {
+        return
+      }
+
       const selection = window.getSelection()
 
       const selected = Boolean(
