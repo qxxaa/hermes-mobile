@@ -14,7 +14,10 @@ phone re-test remains part of the release acceptance checklist.
   place. Gateway `/api`, `/auth`, `/login`, `/ws`, and WebSocket traffic are
   never service-worker intercepted; same-origin static resources are cached.
 - **Mobile shell and interaction** — narrow sidebars/panes are explicit touch
-  overlays with edge reveal and tap-outside close; terminal/local-only chrome
+  overlays with tap-outside close; on coarse pointers the sessions drawer opens
+  from the titlebar Show sidebar button (no left-edge reveal strip, so the
+  composer's attach control stays tappable) while the right edge keeps its
+  reveal strip; terminal/local-only chrome
   is removed from registration and restored layouts; Bot Mode's routines rail
   stays desktop-only; command/model lists scroll on the first touch gesture.
 - **Composer and session reliability** — touch-primary Enter inserts a newline,
@@ -38,7 +41,7 @@ phone re-test remains part of the release acceptance checklist.
   present a multi-file untracked-directory payload when the gateway supplies
   one. Review rows and ship controls are explicit, finger-sized paths on coarse
   pointers.
-- **Upstream containment and verification** — five throttled renderer-split syncs
+- **Upstream containment and verification** — seven throttled renderer-split syncs
   are documented; the workflow checks dependency drift and stripped paths.
   Repository-wide typecheck/lint, full tests, build, diff checks, and phone
   acceptance are explicit gates. Lint currently has 0 errors and 291 warnings;
