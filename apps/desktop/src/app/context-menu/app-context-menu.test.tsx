@@ -460,6 +460,24 @@ describe('AppContextMenu', () => {
     expect(await screen.findByText('Copy URL')).toBeTruthy()
   })
 
+  // Fork (PWA): the pane body wraps the composer in the Radix ZoneMenu
+  // (Reload / New session tab / …). The early return above must still
+  // stopPropagation so the bubbled gesture never reaches it — the ZoneMenu
+  // preventDefaults the gesture and the native callout never appears.
+  it('PWA: keeps editable gestures away from the pane ZoneMenu', () => {
+    pwaState.value = true
+    installBridge()
+    mountMenu()
+    const host = attach('<textarea>draft text</textarea>')
+    const zoneMenu = vi.fn()
+
+    host.addEventListener('contextmenu', zoneMenu)
+    fireEvent.contextMenu(host.querySelector('textarea')!)
+
+    expect($contextMenu.get()).toBeNull()
+    expect(zoneMenu).not.toHaveBeenCalled()
+  })
+
   it('shows the terminal menu through a registered handle', async () => {
     installBridge()
     mountMenu()

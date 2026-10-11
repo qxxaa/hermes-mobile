@@ -587,9 +587,14 @@ export function AppContextMenu() {
       // through window.hermesDesktop?.contextMenuEdit, which the browser shim
       // omits — so the custom menu's Cut/Copy/Paste are dead items that swallow
       // the long-press/right-click gesture the platform would have turned into
-      // its native copy/paste callout (pasting a link into the composer). Leave
-      // the gesture alone so the OS handles it.
+      // its native copy/paste callout (pasting a link into the composer).
+      // stopPropagation still runs: the pane body wraps its content in the
+      // Radix ZoneMenu (Reload / New session tab / …), which would otherwise
+      // take the bubbled gesture and preventDefault the native menu away.
+      // No preventDefault here leaves the gesture alone for the OS.
       if (isBrowserBridge() && target.editable) {
+        event.stopPropagation()
+
         return
       }
 
