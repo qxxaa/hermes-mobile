@@ -14,7 +14,13 @@ vi.mock('@/hermes', async importOriginal => {
   }
 })
 
-import { clearSessionDraft, stashSessionDraft, takeSessionDraft } from '@/store/composer'
+import {
+  $freshDraftKey,
+  clearSessionDraft,
+  NEW_SESSION_DRAFT_KEY,
+  stashSessionDraft,
+  takeSessionDraft
+} from '@/store/composer'
 import { $queuedPromptsBySession, enqueueQueuedPrompt, getQueuedPrompts } from '@/store/composer-queue'
 import { $pinnedSessionIds } from '@/store/layout'
 import { $activeGatewayProfile, $profiles } from '@/store/profile'
@@ -57,6 +63,8 @@ beforeEach(() => {
 afterEach(() => {
   clearSessionDraft('dead-draft-session')
   clearSessionDraft('__new__')
+  clearSessionDraft('__new__:fresh-lifecycle')
+  $freshDraftKey.set(NEW_SESSION_DRAFT_KEY)
   $sessions.set([])
   $pinnedSessionIds.set([])
   $queuedPromptsBySession.set({})
@@ -123,6 +131,34 @@ describe('__runDeadSessionPrunePass', () => {
 
     expect(takeSessionDraft('dead-draft-session').text).toBe('')
     expect(takeSessionDraft('__new__').text).toBe('brand new')
+  })
+
+  it('never prunes a rotated new-chat draft key (#66662 per-instance bucket)', async () => {
+    $sessions.set([row('unrelated')])
+    $freshDraftKey.set('__new__:fresh-lifecycle')
+    stashSessionDraft(null, 'typed into a fresh chat', [])
+
+    // A fresh-draft key is not a session id: it 404s on every profile, so a
+    // naive sweep would clear the draft the user is typing right now (the
+    // composer repaints from the stashed event and the input box empties).
+    getSessionMock.mockRejectedValue(notFound())
+
+    await __runDeadSessionPrunePass()
+
+    expect(takeSessionDraft(null).text).toBe('typed into a fresh chat')
+    expect(getSessionMock.mock.calls.map(([id]) => id)).not.toContain('__new__:fresh-lifecycle')
+  })
+
+  it('keeps a prompt queued on a fresh-chat key out of the sweep', async () => {
+    $sessions.set([row('unrelated')])
+    $freshDraftKey.set('__new__:fresh-lifecycle')
+    // A send that was kept for the next turn before the chat had a session.
+    enqueueQueuedPrompt('__new__:fresh-lifecycle', { attachments: [], text: 'queued before the first session' })
+    getSessionMock.mockRejectedValue(notFound())
+
+    await __runDeadSessionPrunePass()
+
+    expect(getQueuedPrompts('__new__:fresh-lifecycle')).toHaveLength(1)
   })
 
   it('drops queued prompts for dead sessions and keeps live ones', async () => {

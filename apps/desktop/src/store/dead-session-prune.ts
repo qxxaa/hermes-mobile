@@ -21,7 +21,7 @@
 
 import { getSession } from '@/hermes'
 import { mapPool } from '@/lib/pool'
-import { clearSessionDraft, stashedDraftScopes } from '@/store/composer'
+import { clearSessionDraft, isFreshDraftScope, stashedDraftScopes } from '@/store/composer'
 import { $queuedPromptsBySession, clearQueuedPrompts } from '@/store/composer-queue'
 import { $pinnedSessionIds, unpinSession } from '@/store/layout'
 import { $activeGatewayProfile, $profiles, normalizeProfileKey } from '@/store/profile'
@@ -153,6 +153,14 @@ function collectCandidates(): string[] {
   }
 
   return [...candidates].filter(id => {
+    // A new-chat lifecycle key (`__new__` or a per-instance `__new__:<uuid>`
+    // successor) is not a backend session id: a by-id probe 404s on every
+    // profile, so a drop would erase the fresh chat's draft or a prompt queued
+    // before its first session existed.
+    if (isFreshDraftScope(id)) {
+      return false
+    }
+
     const expiresAt = alive.get(id)
 
     return !(expiresAt !== undefined && Date.now() < expiresAt) && !inFlight.has(id)
