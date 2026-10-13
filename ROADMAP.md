@@ -20,6 +20,9 @@ phone re-test remains part of the release acceptance checklist.
   reveal strip; terminal/local-only chrome
   is removed from registration and restored layouts; Bot Mode's routines rail
   stays desktop-only; command/model lists scroll on the first touch gesture.
+  Editables and live text selections keep the platform's own long-press
+  callouts — the app menu no longer stacks a duplicate Copy over the Android
+  selection toolbar, while the gesture still never reaches the pane ZoneMenu.
 - **Composer and session reliability** — touch-primary Enter inserts a newline,
   touch-generated mouse movement cannot steal focus, the model menu refreshes
   backend catalogs on open, stale subagent state reconciles when sessions resume,
@@ -44,7 +47,7 @@ phone re-test remains part of the release acceptance checklist.
 - **Upstream containment and verification** — seven throttled renderer-split syncs
   are documented; the workflow checks dependency drift and stripped paths.
   Repository-wide typecheck/lint, full tests, build, diff checks, and phone
-  acceptance are explicit gates. Lint currently has 0 errors and 291 warnings;
+  acceptance are explicit gates. Lint currently has 0 errors and 286 warnings;
   warning cleanup is opportunistic maintenance, not a claim of a warning-free
   tree.
 
