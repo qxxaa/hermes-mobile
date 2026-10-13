@@ -36,6 +36,12 @@ phone re-test remains part of the release acceptance checklist.
   same-origin gateway routes with range support; on-device Android TTS is the
   default read-aloud rung with Finnish/English sentence detection, while
   configured server voices remain the fallback.
+- **Link routing** — every link click in the browser build hands off to the
+  system browser, because the PWA has no in-app browser surface to render a
+  page in. The PWA link context menu is retired: a long-press copies the URL to
+  the clipboard and leaves the platform's own sheet in charge. Re-check this
+  against upstream's always-external-link setting (`b5b8cad7`) at the next split
+  sync so the policy is not duplicated.
 - **Remote Git review and shipping** — review diffs, stage/unstage/revert,
   commit/push, PR actions when GitHub readiness is reported, branches, and
   worktrees run through the gateway. Repository-root resolution and literal
@@ -53,24 +59,7 @@ phone re-test remains part of the release acceptance checklist.
 
 ## Next
 
-### 1. PWA link routing and URL safety
-
-- Normal HTTP(S) link clicks currently route to `openPreview()`, whose Browser
-  surface depends on Electron's `<webview>`. The PWA has no such element, so
-  the link does not load on the phone.
-- In the browser bridge, validate the URL/scheme and send user-activated web
-  links directly to the system browser; keep the in-app Browser for the real
-  Electron desktop build.
-- Hide the "Open in in-app browser" context-menu action in the PWA and leave
-  "Open in external browser" as the direct choice.
-- Gate this on `isBrowserBridge()` (the capability), not phone width or
-  `pointer: coarse`: the missing capability exists at every PWA viewport size.
-  Local HTML artifact previews remain in-app because they use a sandboxed iframe.
-- Re-evaluate this against upstream's post-`b5b8cad7` always-external-link
-  setting during the next split sync; do not duplicate policy if upstream's
-  new shape already covers the browser target.
-
-### 2. Gateway Git mutation contract
+### 1. Gateway Git mutation contract
 
 The PWA transport and path handling are shipped. The remaining work is the
 unchanged gateway contract:
@@ -90,7 +79,7 @@ unchanged gateway contract:
 These are reliability gaps, not reasons to reintroduce Electron or change the
 Hermes Agent backend without explicit agreement.
 
-### 3. Browser-bridge capability truthfulness
+### 2. Browser-bridge capability truthfulness
 
 - Hide or remove unavailable native log actions and their empty shims
   (`getRecentLogs`, `revealLogs`). Keep `resetBootstrap`/`repairBootstrap`
@@ -98,18 +87,19 @@ Hermes Agent backend without explicit agreement.
   hide the local-only install-repair action in browser mode. Do not return
   silent success for an effect that never happens.
 - Audit `openExternal` against an allowlist of safe schemes before exposing it
-  to user/agent-provided URLs. This is part of the PWA link work above.
+  to user/agent-provided URLs. This is the remaining half of the PWA link work:
+  clicks already route to the OS browser.
 - Scope or invalidate the review file tree's repository-root cache by
   connection/profile, like the Git facade. This is a latent multi-source seam;
   the current single-origin PWA limits exposure but should not rely on that.
 
-### 4. Remote file management
+### 3. Remote file management
 
 - Rename/trash degrade to an unavailable action because the gateway currently
   has no equivalent REST operations. Add explicit gateway contracts or keep the
   UI disabled; do not fake success in the renderer.
 
-### 5. Bundle and upload limits
+### 4. Bundle and upload limits
 
 - Shiki remains the dominant chunk (~3.1 MiB gzipped). Investigate lazy loading
   and code splitting beyond the existing `heic2any` split.
@@ -118,7 +108,7 @@ Hermes Agent backend without explicit agreement.
   multipart/chunked upload route still needs renderer support for metadata and
   progress/error handling.
 
-### 6. Remaining mobile layout work
+### 5. Remaining mobile layout work
 
 - Titlebar icon controls remain substantially below the 44px touch guideline;
   review/branch/PR controls have already been corrected.
@@ -130,7 +120,7 @@ Hermes Agent backend without explicit agreement.
   presentation. `src/app/skills/*` is upstream-owned, so re-evaluate on each sync
   instead of carrying a permanent local fork if upstream fixes the layout.
 
-### 7. Outgoing share
+### 6. Outgoing share
 
 - Add `navigator.share` for sharing selected messages/files out of Hermes. The
   inbound share *target* is done; the outgoing share *API* is not wired.
