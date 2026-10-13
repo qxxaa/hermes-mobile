@@ -478,6 +478,69 @@ describe('AppContextMenu', () => {
     expect(zoneMenu).not.toHaveBeenCalled()
   })
 
+  // Fork (PWA): Chrome Android answers the same long-press that creates the
+  // selection with its own floating toolbar (Copy / Select all / web search),
+  // so the app menu's one-item Copy stacked a second menu over the selection.
+  // A live selection keeps the platform UI; the gesture must still never
+  // reach the pane ZoneMenu, which preventDefaults the native toolbar away.
+  it('PWA: leaves a live text selection to the platform selection toolbar', () => {
+    pwaState.value = true
+    installBridge()
+    mountMenu()
+    const host = attach('<p>transcript words</p>')
+    const paragraph = host.querySelector('p')!
+    const range = document.createRange()
+    const selection = window.getSelection()!
+
+    range.selectNodeContents(paragraph)
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const zoneMenu = vi.fn()
+
+    host.addEventListener('contextmenu', zoneMenu)
+    fireEvent.contextMenu(paragraph)
+
+    expect($contextMenu.get()).toBeNull()
+    expect(screen.queryByText('Copy')).toBeNull()
+    expect(zoneMenu).not.toHaveBeenCalled()
+
+    selection.removeAllRanges()
+  })
+
+  // The gate is scoped to a LIVE selection: a long-press that landed on no
+  // selection still gets the app menu, and the desktop build keeps its own
+  // selection Copy item.
+  it('PWA: still opens the app menu when no selection is under the gesture', () => {
+    pwaState.value = true
+    installBridge()
+    mountMenu()
+    const host = attach('<p>transcript words</p>')
+
+    fireEvent.contextMenu(host.querySelector('p')!)
+
+    expect($contextMenu.get()).not.toBeNull()
+  })
+
+  it('keeps the app copy item for selections outside the PWA', async () => {
+    installBridge()
+    mountMenu()
+    const host = attach('<p>transcript words</p>')
+    const paragraph = host.querySelector('p')!
+    const range = document.createRange()
+    const selection = window.getSelection()!
+
+    range.selectNodeContents(paragraph)
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    fireEvent.contextMenu(paragraph)
+
+    expect(await screen.findByText('Copy')).toBeTruthy()
+
+    selection.removeAllRanges()
+  })
+
   it('shows the terminal menu through a registered handle', async () => {
     installBridge()
     mountMenu()

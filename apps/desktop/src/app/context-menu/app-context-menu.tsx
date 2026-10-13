@@ -609,6 +609,19 @@ export function AppContextMenu() {
         )
       )
 
+      // Fork (PWA): a live text selection keeps the platform's own selection
+      // UI. Chrome Android answers the very long-press that reaches this
+      // handler with its floating selection toolbar (Copy / Select all / web
+      // search), so opening the app menu on top of it stacked a second Copy
+      // on the same selection. Same contract as the editable branch above:
+      // stopPropagation so the pane body's ZoneMenu cannot preventDefault the
+      // native toolbar away, and no preventDefault here.
+      if (isBrowserBridge() && selected) {
+        event.stopPropagation()
+
+        return
+      }
+
       const owned = Boolean(target.linkUrl || target.onImage || target.editable || selected)
 
       // A selection elsewhere in the same pane must not take its bare menu.
