@@ -21,6 +21,13 @@ import {
 const desktopWindow = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
 const initialHermesDesktop = desktopWindow.hermesDesktop
 
+const pwaState = vi.hoisted(() => ({ value: false }))
+
+vi.mock('@/bridge/browser-bridge', async importOriginal => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  isBrowserBridge: () => pwaState.value
+}))
+
 function installDesktopBridge(partial: Partial<Window['hermesDesktop']> = {}) {
   desktopWindow.hermesDesktop = {
     fetchLinkTitle: vi.fn().mockResolvedValue(''),
@@ -43,6 +50,7 @@ afterEach(() => {
   __resetLinkTitleCache()
   closeRightRail()
   setAlwaysExternalLinks(false)
+  pwaState.value = false
   vi.restoreAllMocks()
   cleanup()
 
@@ -133,6 +141,24 @@ describe('external link helpers', () => {
 
     expect(openExternal).not.toHaveBeenCalled()
     await waitFor(() => expect($previewTabs.get().at(-1)?.target.url).toBe('https://example.com/path/to/resource'))
+  })
+
+  // Fork (PWA): the browser build has no in-app browser — its Browser surface
+  // is an Electron <webview>, so a click routed there paints nothing. A plain
+  // click hands off to the OS browser instead.
+  it('PWA: sends a plain web-link click to the OS browser', () => {
+    pwaState.value = true
+
+    const openExternal = vi.fn().mockResolvedValue(undefined)
+
+    installDesktopBridge({ openExternal: openExternal as unknown as Window['hermesDesktop']['openExternal'] })
+
+    render(<ExternalLink href="https://example.com/path/to/resource">Example link</ExternalLink>)
+
+    fireEvent.click(screen.getByRole('link', { name: 'Example link' }))
+
+    expect(openExternal).toHaveBeenCalledWith('https://example.com/path/to/resource')
+    expect($previewTabs.get()).toHaveLength(0)
   })
 
   // Platform-specific on purpose (same rule as terminal links / middle-click):

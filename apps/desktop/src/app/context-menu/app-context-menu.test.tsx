@@ -449,15 +449,34 @@ describe('AppContextMenu', () => {
     expect(screen.queryByText('Paste')).toBeNull()
   })
 
-  it('PWA: still opens the app menu for non-editable targets', async () => {
+  it('PWA: still opens the app menu for bare non-editable targets', () => {
+    pwaState.value = true
+    installBridge()
+    mountMenu()
+    const host = attach('<span>chrome</span>')
+
+    fireEvent.contextMenu(host.querySelector('span')!)
+
+    expect($contextMenu.get()).not.toBeNull()
+  })
+
+  // Fork (PWA): the app link menu existed to choose between the in-app and the
+  // OS browser. The browser build has no in-app browser (taps already go to
+  // the OS) and the platform's own long-press sheet covers open/copy, so the
+  // menu stays closed — the gesture hands the URL to the clipboard instead.
+  it('PWA: leaves links to the platform sheet and copies the URL', () => {
     pwaState.value = true
     installBridge()
     mountMenu()
     const host = attach('<a href="https://example.com/docs">Docs</a>')
+    const zoneMenu = vi.fn()
 
+    host.addEventListener('contextmenu', zoneMenu)
     fireEvent.contextMenu(host.querySelector('a')!)
 
-    expect(await screen.findByText('Copy URL')).toBeTruthy()
+    expect($contextMenu.get()).toBeNull()
+    expect(zoneMenu).not.toHaveBeenCalled()
+    expect(desktopWindow.hermesDesktop?.writeClipboard).toHaveBeenCalledWith('https://example.com/docs')
   })
 
   // Fork (PWA): the pane body wraps the composer in the Radix ZoneMenu

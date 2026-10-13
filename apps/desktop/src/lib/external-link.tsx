@@ -1,6 +1,7 @@
 import type { ComponentProps, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 
+import { isBrowserBridge } from '@/bridge/browser-bridge'
 import { ArrowUpRight } from '@/lib/icons'
 import { IS_MAC } from '@/lib/keybinds/combo'
 import { $alwaysExternalLinks } from '@/store/external-links'
@@ -256,6 +257,11 @@ export function hudForcesNativeLinks(search = typeof window === 'undefined' ? ''
  * no business in the webview and always hands off to the OS. The HUD has no
  * browser pane, so it always takes the OS path. The "Always open links in
  * external browser" setting (`$alwaysExternalLinks`) sends every click there.
+ *
+ * Fork (PWA): the browser build has no in-app browser at all — the preview
+ * pane's Browser surface is an Electron `<webview>`, and a click routed there
+ * paints nothing. Every click goes to the system browser instead, so the
+ * in-app/OS choice the desktop menu offers does not exist on a phone.
  */
 export function openLink(href: string, options: { native?: boolean } = {}): void {
   const target = normalizeExternalUrl(href)
@@ -269,6 +275,7 @@ export function openLink(href: string, options: { native?: boolean } = {}): void
     $alwaysExternalLinks.get() ||
     isConnectorAuthorizationLink(target) ||
     hudForcesNativeLinks() ||
+    isBrowserBridge() ||
     !/^https?:$/i.test(parseUrl(target)?.protocol ?? '')
   ) {
     openExternalLink(target)

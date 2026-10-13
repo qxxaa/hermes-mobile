@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { type Translations, useI18n } from '@/i18n'
 import { hostPathLabel, hudForcesNativeLinks, normalizeExternalUrl, openExternalLink } from '@/lib/external-link'
+import { triggerHaptic } from '@/lib/haptics'
 import { formatCombo } from '@/lib/keybinds/combo'
 import { isRemoteGateway } from '@/lib/media'
 import { reachablePreviewUrl } from '@/lib/preview-reach'
@@ -618,6 +619,24 @@ export function AppContextMenu() {
       // native toolbar away, and no preventDefault here.
       if (isBrowserBridge() && selected) {
         event.stopPropagation()
+
+        return
+      }
+
+      // Fork (PWA): a link keeps the platform's own sheet. The app link menu
+      // existed to choose between the in-app and the OS browser — a choice the
+      // browser build does not have (no <webview>, and a tap already reaches
+      // the OS browser), while the platform's long-press sheet covers open and
+      // copy. The URL still lands on the clipboard so it can be pasted
+      // anywhere. Same contract as the branches above: stopPropagation so the
+      // pane body's ZoneMenu cannot preventDefault the native sheet away, and
+      // no preventDefault here.
+      if (isBrowserBridge() && target.linkUrl) {
+        event.stopPropagation()
+        void writeClipboardText(normalizeExternalUrl(target.linkUrl)).then(
+          () => triggerHaptic('crisp'),
+          () => undefined
+        )
 
         return
       }
