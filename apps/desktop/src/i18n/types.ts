@@ -889,6 +889,8 @@ export interface Translations extends NoticeTranslations {
       modelPricingDesc: string
       reactionsTitle: string
       reactionsDesc: string
+      stickyUserMessagesTitle: string
+      stickyUserMessagesDesc: string
       tipsTitle: string
       tipsDesc: string
       tipsReset: (count: number) => string
