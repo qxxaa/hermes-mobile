@@ -69,7 +69,7 @@ import {
   runRewindSubmit,
   type SurvivorUserRowIds
 } from './rewind'
-import { useSlashCommand } from './slash'
+import { submitSteeringText, useSlashCommand } from './slash'
 import { captureSteeringSession } from './steering-session'
 import { useSubmitPrompt } from './submit'
 import {
@@ -631,6 +631,37 @@ export function usePromptActions({
       const visibleText = sanitizeComposerInput(rawText).trim()
       const attachments = options?.attachments ?? $composerAttachments.get()
 
+      if (options?.busySteer) {
+        if (attachments.length) {
+          return false
+        }
+
+        const target = captureSteeringSession({
+          activeSessionIdRef,
+          selectedStoredSessionIdRef,
+          runtimeIdByStoredSessionIdRef,
+          getRoutedStoredSessionId,
+          requestGateway,
+          updateSessionState
+        })
+
+        if (!target || (options.sessionId && options.sessionId !== target.sessionId)) {
+          return false
+        }
+
+        const { sessionId, storedSessionId } = target
+
+        return submitSteeringText({
+          text: rawText,
+          sessionId,
+          storedSessionId,
+          composerScope: options.composerScope,
+          request: target.requestGateway,
+          update: updateSessionState,
+          submit: submitPromptText
+        })
+      }
+
       if (isSlashCommandText(visibleText)) {
         if (attachments.length) {
           notify({
@@ -652,7 +683,16 @@ export function usePromptActions({
 
       return await submitPromptText(rawText, options)
     },
-    [executeSlashCommand, submitPromptText]
+    [
+      activeSessionIdRef,
+      executeSlashCommand,
+      getRoutedStoredSessionId,
+      runtimeIdByStoredSessionIdRef,
+      requestGateway,
+      selectedStoredSessionIdRef,
+      submitPromptText,
+      updateSessionState
+    ]
   )
 
   const transcribeVoiceAudio = useCallback(

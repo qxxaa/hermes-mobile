@@ -57,6 +57,17 @@ target the in-app Browser surface rather than directly opening the system
 browser; and outgoing `navigator.share` is not wired. Review edge cases and
 longer-term mobile work are tracked in [`ROADMAP.md`](ROADMAP.md).
 
+## Busy Send in this fork
+
+Ordinary text sent while the agent is working uses non-interrupting steering,
+through the same backend handler as `/steer`. This is hardwired for this private
+fork: `display.busy_input_mode` does not change Mobile's Send behaviour.
+
+Explicit `/steer`, Stop, redirect and queue controls keep their existing paths.
+Attachments, compaction and blocking approval/secret/sudo prompts still use the
+existing next-turn queue. Unconfirmed steering restores the draft without an
+automatic retry; a backend-directed next-turn fallback is still honoured.
+
 ## Development
 
 ```bash
