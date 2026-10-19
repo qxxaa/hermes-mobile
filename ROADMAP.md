@@ -125,6 +125,15 @@ Hermes Agent backend without explicit agreement.
 - Add `navigator.share` for sharing selected messages/files out of Hermes. The
   inbound share *target* is done; the outgoing share *API* is not wired.
 
+### 11. Container image release evidence
+
+- The frontend-only nginx image and `main` publishing workflow are implemented
+  in this branch, pending Docker-capable CI execution, GHCR publication,
+  dual-version pull and rollback verification, and a real phone deployment.
+- The transport fixture is intentionally not proof of Hermes gateway behavior.
+  No automatic upstream tracking, schedules, cleanup, or image expiration is
+  planned as part of this item.
+
 ## Explicitly out of scope
 
 - `git.scanRepos` — no gateway repo-scan endpoint; resolve the active repository
